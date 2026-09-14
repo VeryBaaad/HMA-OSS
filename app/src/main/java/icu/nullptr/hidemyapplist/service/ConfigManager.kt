@@ -4,7 +4,6 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import icu.nullptr.hidemyapplist.MyApp.Companion.hmaApp
-import icu.nullptr.hidemyapplist.common.CollectionUtils.removeIfWithCount
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.common.JsonConfig
 import icu.nullptr.hidemyapplist.common.settings_presets.ReplacementItem
@@ -31,28 +30,40 @@ object ConfigManager {
          * This preset/template type is used for settings filtering.
          */
         SETTINGS,
-
-        /**
-         * Ignored apps from presets, not really a preset
-         */
-        IGNORED_APPS,
     }
 
     data class TemplateInfo(val name: String?, val type: PTType, val isWhiteList: Boolean)
     data class PresetInfo(val name: String, val type: PTType?, val translation: String)
 
     private const val TAG = "ConfigManager"
-    private var config = JsonConfig()
+    private lateinit var config: JsonConfig
+    val configFile = File("${hmaApp.filesDir.absolutePath}/config.json")
 
     fun init() {
-        try {
-            val rawConfig = ServiceClient.readConfig()!!
-            config = JsonConfig.parse(rawConfig)
-        } catch (_: Throwable) {
-            // ignore the issues
+        val configFileIsNew = !configFile.exists()
+        if (configFileIsNew) {
+            config = JsonConfig()
+            configFile.writeText(config.toString())
         }
-
-        config.configVersion = BuildConfig.CONFIG_VERSION
+        runCatching {
+            if (!configFileIsNew) config = JsonConfig.parse(configFile.readText())
+            val configVersion = config.configVersion
+            if (configVersion < BuildConfig.MIN_BACKUP_VERSION) throw RuntimeException("Config version too old")
+            config.configVersion = BuildConfig.CONFIG_VERSION
+        }.onSuccess {
+            saveConfig()
+        }.onFailure { catch ->
+            runCatching {
+                config = JsonConfig.parse(ServiceClient.readConfig() ?: throw RuntimeException("Service config is unavailable"))
+                config.configVersion = BuildConfig.CONFIG_VERSION
+                showToast(R.string.home_restore_config)
+            }.onSuccess {
+                saveConfig()
+            }.onFailure {
+                showToast(R.string.config_damaged)
+                throw RuntimeException("Config file too old or damaged", catch)
+            }
+        }
     }
 
     fun saveConfig() {
@@ -61,12 +72,11 @@ object ConfigManager {
         try {
             ServiceClient.writeConfig(text)
         } catch (_: Throwable) {
-            val configFile = File("${hmaApp.filesDir.absolutePath}/temp_config.json")
-            configFile.writeText(text)
-
             val parcelFD = ParcelFileDescriptor.open(configFile, ParcelFileDescriptor.MODE_READ_ONLY)
             ServiceClient.writeFD(Constants.PARCEL_TYPE_CONFIG, parcelFD)
         }
+
+        configFile.writeText(text)
     }
 
     var detailLog: Boolean
@@ -133,37 +143,6 @@ object ConfigManager {
             config.packageQueryWorkaround = value
             saveConfig()
             PackageHelper.invalidateCache()
-        }
-
-    var webViewProtection: Boolean
-        get() = config.webViewProtection
-        set(value) {
-            config.webViewProtection = value
-            saveConfig()
-        }
-
-    var defaultConfig: JsonConfig.AppConfig?
-        get() = config.defaultConfig
-        set(value) {
-            config.defaultConfig = value
-            saveConfig()
-        }
-
-    var disabledHooks: List<JsonConfig.HookItem>
-        get() = config.disabledHooks
-        set(elements) {
-            config.disabledHooks.clear()
-            config.disabledHooks.addAll(elements)
-            saveConfig()
-            showToast(R.string.settings_need_reboot)
-        }
-
-    var ignoredPackagesForPresets: Set<String>
-        get() = config.ignoredPackagesForPresets
-        set(elements) {
-            config.ignoredPackagesForPresets.clear()
-            config.ignoredPackagesForPresets.addAll(elements)
-            saveConfig()
         }
 
     fun importConfig(json: String) {
@@ -290,31 +269,38 @@ object ConfigManager {
         saveConfig()
     }
 
-    fun clearUninstalledAppConfigs(inConfig: JsonConfig = config, onFinish: (success: Boolean) -> Unit) {
+    fun clearUninstalledAppConfigs(onFinish: (success: Boolean) -> Unit) {
         PackageHelper.invalidateCache { throwable ->
             if (throwable == null) {
                 // --- STEP 1: Clear uninstalled app configs ---
-                val scopeRemoveCount = inConfig.scope.removeIfWithCount { pkg, _ ->
-                    !PackageHelper.exists(pkg)
+                val scopeMarkedToRemove = mutableListOf<String>()
+                config.scope.keys.forEach { packageName ->
+                    if (!PackageHelper.exists(packageName)) {
+                        scopeMarkedToRemove.add(packageName)
+                    }
+                }
+
+                if (scopeMarkedToRemove.isNotEmpty()) {
+                    scopeMarkedToRemove.forEach { config.scope.remove(it) }
                 }
 
                 // --- STEP 2: Clear uninstalled apps from templates ---
                 var cleanedAppCount = 0
-                inConfig.templates.forEach { (key, value) ->
+                config.templates.forEach { (key, value) ->
                     val newList = value.appList.mapNotNull { if (PackageHelper.exists(it)) it else null }.toSet()
                     val count = value.appList.size - newList.size
 
                     if (count > 0) {
                         cleanedAppCount += count
-                        inConfig.templates[key] = JsonConfig.Template(
+                        config.templates[key] = JsonConfig.Template(
                             isWhitelist = value.isWhitelist,
                             appList = newList
                         )
                     }
                 }
 
-                if ((scopeRemoveCount > 0 || cleanedAppCount > 0) && inConfig == config) {
-                    ServiceClient.log(Log.INFO, TAG, "Pruned $scopeRemoveCount app config(s) and $cleanedAppCount app(s) from template(s)")
+                ServiceClient.log(Log.INFO, TAG, "Pruned ${scopeMarkedToRemove.size} app config(s) and $cleanedAppCount app(s) from template(s)")
+                if (scopeMarkedToRemove.isNotEmpty() || cleanedAppCount > 0) {
                     saveConfig()
                 }
 
@@ -323,26 +309,5 @@ object ConfigManager {
                 onFinish(false)
             }
         }
-    }
-
-    fun getRawConfig(deepCopy: Boolean): JsonConfig {
-        if (deepCopy) {
-            val scopeCopy = config.scope.toMutableMap()
-            val templateCopy = config.templates.toMutableMap()
-            val settingsTemplateCopy = config.settingsTemplates.toMutableMap()
-
-            return config.copy(
-                scope = scopeCopy,
-                templates = templateCopy,
-                settingsTemplates = settingsTemplateCopy,
-            )
-        }
-
-        return config
-    }
-
-    fun resetConfig() {
-        config = JsonConfig()
-        saveConfig()
     }
 }

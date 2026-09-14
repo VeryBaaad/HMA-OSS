@@ -1,13 +1,12 @@
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.gradle.BaseExtension
-import java.util.Properties
+import org.jetbrains.kotlin.konan.properties.Properties
 
 plugins {
     alias(libs.plugins.kotlin) apply false
     alias(libs.plugins.agp.app) apply false
     alias(libs.plugins.agp.lib) apply false
     alias(libs.plugins.nav.safeargs.kotlin) apply false
-    alias(libs.plugins.com.github.aerathstuff.zygoteloader) apply false
 }
 
 fun String.execute(currentWorkingDir: File = file("./")): String {
@@ -32,11 +31,9 @@ val crowdinApiKey: String by extra(localProperties.getProperty("crowdinApiKey", 
 fun getUncommittedSuffix(): String {
     if (officialBuild) return ""
 
-    val shortRef = "git rev-parse --short HEAD".execute()
-
     if (ciBuild) {
         val headRefVal = providers.environmentVariable("GITHUB_HEAD_REF").orElse("HEAD").get()
-        return "$headRefVal-$shortRef"
+        return "-$headRefVal"
     }
 
     var returnedVal = ""
@@ -44,28 +41,19 @@ fun getUncommittedSuffix(): String {
     try {
         val branch = "git rev-parse --abbrev-ref HEAD".execute().split("/").last()
         if (branch != "master") {
-            returnedVal += "$branch-"
+            returnedVal += "-$branch"
         }
     } catch (_: Throwable) {}
-
-    returnedVal += shortRef
 
     val result = "git status -s".execute()
     if (result.isEmpty()) {
         return returnedVal
     }
 
-    return "$returnedVal+${result.count { it == '\n' } + 1}"
+    return "$returnedVal-dirty+${result.count { it == '\n' } + 1}"
 }
 
-val gitVersionName: String get() {
-    val suffix = getUncommittedSuffix()
-
-    return suffix.ifEmpty {
-        "oss-$gitCommitCountAfterOss"
-    }
-}
-
+val gitHasUncommittedSuffix = getUncommittedSuffix()
 val gitCommitCount = "git rev-list refs/remotes/origin/master --count".execute().toInt()
 
 // 432 is the count of commits before license changed
@@ -75,7 +63,7 @@ val minSdkVer by extra(29)
 val targetSdkVer by extra(36)
 
 val appVerCode by extra(gitCommitCount + 0x6f7373) // commit count + 0xOSS
-val appVerName by extra(gitVersionName)
+val appVerName by extra("oss-${gitCommitCountAfterOss}${gitHasUncommittedSuffix}")
 
 /*
  * configVerCode, serviceVerCode and minBackupVerCode is used by other build.gradle.kts files
@@ -119,8 +107,6 @@ fun Project.configureBaseExtension() {
         }
 
         val config = localProperties.getProperty("fileDir")?.let {
-            logger.lifecycle("Using provided signing key")
-
             signingConfigs.create("config") {
                 storeFile = file(it)
                 storePassword = localProperties.getProperty("storePassword")

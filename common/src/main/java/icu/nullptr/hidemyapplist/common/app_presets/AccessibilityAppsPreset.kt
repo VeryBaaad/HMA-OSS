@@ -14,7 +14,7 @@ class AccessibilityAppsPreset(private val appPresets: AppPresets) : BasePreset(N
 
     override fun canBeAddedIntoPreset(appInfo: ApplicationInfo): Boolean {
         // skip detector apps
-        if (appPresets.containsPackage(DetectorAppsPreset.NAME, appInfo.packageName)) {
+        if (appPresets.getPresetByName(DetectorAppsPreset.NAME)?.containsPackage(appInfo.packageName) ?: false) {
             return false
         }
 

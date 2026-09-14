@@ -2,8 +2,8 @@ package icu.nullptr.hidemyapplist.common.app_presets
 
 import android.content.pm.ApplicationInfo
 import icu.nullptr.hidemyapplist.common.AppPresets
+import icu.nullptr.hidemyapplist.common.Utils
 import icu.nullptr.hidemyapplist.common.Utils.checkSplitPackages
-import icu.nullptr.hidemyapplist.common.Utils.containsMultiple
 
 class SDhizukuAppsPreset(private val appPresets: AppPresets) : BasePreset(NAME) {
     companion object {
@@ -27,7 +27,8 @@ class SDhizukuAppsPreset(private val appPresets: AppPresets) : BasePreset(NAME) 
         return checkSplitPackages(appInfo) { key, zipFile ->
             val manifestStr = appPresets.readManifest(key, zipFile)
 
-            return@checkSplitPackages manifestStr.containsMultiple(
+            return@checkSplitPackages Utils.containsMultiple(
+                manifestStr,
                 SHIZUKU_PROVIDER,
                 DHIZUKU_PROVIDER
             )

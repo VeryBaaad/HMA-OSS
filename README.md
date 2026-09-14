@@ -13,6 +13,12 @@
     <a href="https://github.com/frknkrc44/HMA-OSS/releases/latest" style="text-decoration:none">
       <img src="https://img.shields.io/github/v/release/frknkrc44/HMA-OSS?label=Release">
     </a>
+    <a href="https://apt.izzysoft.de/fdroid/index/apk/org.frknkrc44.hma_oss" style="text-decoration:none">
+      <img src="https://img.shields.io/endpoint?url=https://apt.izzysoft.de/fdroid/api/v1/shield/org.frknkrc44.hma_oss&label=IzzyOnDroid">
+    </a>
+    <a href="https://shields.rbtlog.dev/org.frknkrc44.hma_oss" style="text-decoration:none">
+      <img src="https://shields.rbtlog.dev/simple/org.frknkrc44.hma_oss">
+    </a>
     <a href="https://github.com/frknkrc44/HMA-OSS/releases/latest" style="text-decoration:none">
       <img src="https://img.shields.io/github/downloads/frknkrc44/HMA-OSS/total">
     </a>
@@ -21,6 +27,9 @@
     </a>
     <a href="https://choosealicense.com/licenses/gpl-3.0/" style="text-decoration:none">
       <img src="https://img.shields.io/github/license/frknkrc44/HMA-OSS?label=License">
+    </a>
+    <a href="https://hypercommit.com/hma-oss">
+      <img src="https://img.shields.io/badge/Hypercommit-DB2475">
     </a>
   </p>
 </div>
@@ -39,7 +48,7 @@ Although it's bad practice to detect the installation of specific apps, not ever
 
 Additionally, some apps use various loopholes to acquire your app list, in order to use it as fingerprinting data or for other nefarious purposes.
 
-This module can work as an Zygisk module to hide apps or reject app list requests.
+This module can work as an Xposed module to hide apps or reject app list requests.
 
 ## About HMA-OSS
 

@@ -13,6 +13,12 @@
     <a href="https://github.com/frknkrc44/HMA-OSS/releases/latest" style="text-decoration:none">
       <img src="https://img.shields.io/github/v/release/frknkrc44/HMA-OSS?label=Release">
     </a>
+    <a href="https://apt.izzysoft.de/fdroid/index/apk/org.frknkrc44.hma_oss" style="text-decoration:none">
+      <img src="https://img.shields.io/endpoint?url=https://apt.izzysoft.de/fdroid/api/v1/shield/org.frknkrc44.hma_oss&label=IzzyOnDroid">
+    </a>
+    <a href="https://shields.rbtlog.dev/org.frknkrc44.hma_oss" style="text-decoration:none">
+      <img src="https://shields.rbtlog.dev/simple/org.frknkrc44.hma_oss">
+    </a>
     <a href="https://github.com/frknkrc44/HMA-OSS/releases/latest" style="text-decoration:none">
       <img src="https://img.shields.io/github/downloads/frknkrc44/HMA-OSS/total">
     </a>
@@ -39,7 +45,7 @@
 
 さらに、一部のアプリはさまざまな抜け穴を利用してアプリリストを取得し、それをフィンガープリンティングデータとして使用したり、その他の不正な目的に使用したりします。
 
-このモジュールは、アプリを非表示にしたり、アプリリストの要求を拒否したりする Zygisk モジュールとして機能します。
+このモジュールは、アプリを非表示にしたり、アプリリストの要求を拒否したりする Xposed モジュールとして機能します。
 
 ## 翻訳に貢献する
 [こちら](https://crowdin.com/project/frknkrc44-hma-oss)から翻訳に貢献することができます。

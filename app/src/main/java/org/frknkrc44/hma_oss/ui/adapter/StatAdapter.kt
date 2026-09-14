@@ -7,7 +7,7 @@ import icu.nullptr.hidemyapplist.common.FilterHolder
 import icu.nullptr.hidemyapplist.util.PackageHelper
 import org.frknkrc44.hma_oss.databinding.StatItemViewBinding
 
-class StatAdapter(private val onBeginWaitForRefresh: (StatAdapter) -> Unit) : RecyclerView.Adapter<StatAdapter.ViewHolder>() {
+class StatAdapter() : RecyclerView.Adapter<StatAdapter.ViewHolder>() {
 
     data class StatItem(
         val packageName: String,
@@ -19,22 +19,18 @@ class StatAdapter(private val onBeginWaitForRefresh: (StatAdapter) -> Unit) : Re
 
     private val logs = mutableListOf<StatItem>()
 
-    var wasRefreshing = false
-
     internal fun addOrUpdateEntry(packageName: String, filterCount: FilterHolder.FilterCount) {
         val position = logs.indexOfFirst { it.packageName == packageName }
-        val refreshing = PackageHelper.refreshing
-
         if (position < 0) {
-            logs.add(StatItem(packageName, filterCount, refreshing))
+            logs.add(StatItem(packageName, filterCount, PackageHelper.refreshing))
             notifyItemInserted(logs.size - 1)
         } else {
             val item = logs[position]
             if (item.totalCount == filterCount.totalCount && !item.refreshing) return
 
-            logs[position] = StatItem(packageName, filterCount, refreshing)
+            logs[position] = StatItem(packageName, filterCount, PackageHelper.refreshing)
 
-            val resort = logs.sortedWith { it1, it2 -> it1.totalCount.compareTo(it2.totalCount) }.asReversed()
+            val resort = logs.sortedWith { it1, it2 -> if (it1.totalCount > it2.totalCount) -1 else 0 }
             val newIndex = resort.indexOfFirst { it.packageName == packageName }
 
             logs.clear()
@@ -46,12 +42,6 @@ class StatAdapter(private val onBeginWaitForRefresh: (StatAdapter) -> Unit) : Re
             } else {
                 notifyItemChanged(position)
             }
-        }
-
-        if (!wasRefreshing && refreshing) {
-            wasRefreshing = true
-
-            onBeginWaitForRefresh(this)
         }
     }
 

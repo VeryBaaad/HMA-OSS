@@ -1,8 +1,9 @@
 package icu.nullptr.hidemyapplist.common
 
-import icu.nullptr.hidemyapplist.common.Utils.encoder
+import icu.nullptr.hidemyapplist.common.Constants.ENABLE_INTERNET_UNKNOWN
 import icu.nullptr.hidemyapplist.common.settings_presets.ReplacementItem
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.frknkrc44.hma_oss.common.BuildConfig
 
 @Serializable
@@ -70,28 +71,8 @@ data class JsonConfig(
      */
     var packageQueryWorkaround: Boolean = false,
 
-    /**
-     * Enable WebView protection to prevent some crashes caused by misconfigurations
-     * for WebView or Browser apps
-     */
-    var webViewProtection: Boolean = true,
-
-    /**
-     * This config will be applied for ALL of new apps when enabled
-     *
-     * null means do not apply a default config
-     */
-    var defaultConfig: AppConfig? = null,
-
-    val ignoredPackagesForPresets: MutableSet<String> = mutableSetOf(),
-
     val templates: MutableMap<String, Template> = mutableMapOf(),
     val settingsTemplates: MutableMap<String, SettingsTemplate> = mutableMapOf(),
-
-    /**
-     * A list of disabled hooks, checked while the module is loading
-     */
-    val disabledHooks: MutableList<HookItem> = mutableListOf(),
 
     /**
      * A package name and config pair to keep per-app configs
@@ -221,22 +202,13 @@ data class JsonConfig(
         }
     }
 
-    @Serializable
-    data class HookItem(
-        val className: String,
-        val methodName: String,
-        val argumentCount: Int,
-    ) {
-        override fun toString() = encoder.encodeToString(this)
-
-        companion object {
-            fun parse(json: String) = encoder.decodeFromString<HookItem>(json)
-        }
-    }
-
     companion object {
         fun parse(json: String) = encoder.decodeFromString<JsonConfig>(json)
 
+        val encoder = Json {
+            encodeDefaults = true
+            ignoreUnknownKeys = true
+        }
     }
 
     override fun toString() = encoder.encodeToString(this)

@@ -11,7 +11,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.ListPreference
-import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
@@ -22,30 +21,26 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.androidbroadcast.vbpd.viewBinding
 import icu.nullptr.hidemyapplist.MyApp.Companion.hmaApp
 import icu.nullptr.hidemyapplist.common.Constants
-import icu.nullptr.hidemyapplist.common.JsonConfig
 import icu.nullptr.hidemyapplist.common.PropertyUtils
-import icu.nullptr.hidemyapplist.data.AppConstants
 import icu.nullptr.hidemyapplist.service.ConfigManager
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.util.enabledString
 import icu.nullptr.hidemyapplist.ui.util.navController
-import icu.nullptr.hidemyapplist.ui.util.navigate
 import icu.nullptr.hidemyapplist.ui.util.recreateMainActivity
 import icu.nullptr.hidemyapplist.ui.util.setEdge2EdgeFlags
 import icu.nullptr.hidemyapplist.ui.util.setupToolbar
 import icu.nullptr.hidemyapplist.ui.util.showToast
 import icu.nullptr.hidemyapplist.ui.util.withAnimations
 import icu.nullptr.hidemyapplist.util.ConfigUtils.Companion.getLocale
+import icu.nullptr.hidemyapplist.util.LangList
 import icu.nullptr.hidemyapplist.util.PackageHelper.findEnabledAppComponent
 import icu.nullptr.hidemyapplist.util.SuUtils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.frknkrc44.hma_oss.BuildConfig
 import org.frknkrc44.hma_oss.R
 import org.frknkrc44.hma_oss.databinding.FragmentSettingsBinding
 import org.frknkrc44.hma_oss.ui.activity.MainActivity
-import org.frknkrc44.hma_oss.ui.fragment.AppSettingsV2FragmentArgs
 import org.frknkrc44.hma_oss.ui.preference.AppIconPreference
 import java.util.Locale
 
@@ -59,11 +54,7 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                 toolbar = this,
                 title = getString(R.string.title_settings),
                 navigationIcon = R.drawable.baseline_arrow_back_24,
-                navigationOnClick = {
-                    if (!parentFragmentManager.popBackStackImmediate()) {
-                        navController.navigateUp()
-                    }
-                }
+                navigationOnClick = { navController.navigateUp() }
             )
             // isTitleCentered = true
         }
@@ -109,7 +100,6 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                 "enableInternet" -> PrefManager.enableInternet == Constants.ENABLE_INTERNET_ON
                 "disableUpdate" -> PrefManager.disableUpdate
                 "packageQueryWorkaround" -> ConfigManager.packageQueryWorkaround
-                "webViewProtection" -> ConfigManager.webViewProtection
                 else -> throw IllegalArgumentException("Invalid key: $key")
             }
         }
@@ -131,13 +121,6 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
             }
         }
 
-        override fun getStringSet(key: String?, defValues: Set<String>?): Set<String> {
-            return when (key) {
-                "disableHooks" -> ConfigManager.disabledHooks.map { it.toString() }.toSet()
-                else -> throw IllegalArgumentException("Invalid key: $key")
-            }
-        }
-
         override fun putBoolean(key: String, value: Boolean) {
             when (key) {
                 "followSystemAccent" -> PrefManager.followSystemAccent = value
@@ -155,7 +138,6 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                 "voldAppDataIsolation" -> ConfigManager.altVoldAppDataIsolation = value
                 "skipSystemAppDataIsolation" -> ConfigManager.skipSystemAppDataIsolation = value
                 "packageQueryWorkaround" -> ConfigManager.packageQueryWorkaround = value
-                "webViewProtection" -> ConfigManager.webViewProtection = value
                 else -> throw IllegalArgumentException("Invalid key: $key")
             }
         }
@@ -173,13 +155,6 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
         override fun putInt(key: String, value: Int) {
             when (key) {
                 "systemWallpaperAlpha" -> PrefManager.systemWallpaperAlpha = value
-                else -> throw IllegalArgumentException("Invalid key: $key")
-            }
-        }
-
-        override fun putStringSet(key: String, values: Set<String>?) {
-            when (key) {
-                "disableHooks" -> ConfigManager.disabledHooks = values?.map { JsonConfig.HookItem.parse(it) } ?: listOf()
                 else -> throw IllegalArgumentException("Invalid key: $key")
             }
         }
@@ -266,7 +241,7 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
             findPreference<ListPreference>("language")?.let {
                 val userLocale = getLocale()
                 val entries = buildList {
-                    for (lang in BuildConfig.SUPPORTED_LOCALES) {
+                    for (lang in LangList.LOCALES) {
                         if (lang == "SYSTEM") add(getString(R.string.follow_system))
                         else {
                             val locale = Locale.forLanguageTag(lang)
@@ -275,7 +250,7 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                     }
                 }
                 it.entries = entries.toTypedArray()
-                it.entryValues = BuildConfig.SUPPORTED_LOCALES
+                it.entryValues = LangList.LOCALES
                 if (it.value == "SYSTEM") {
                     it.summary = getString(R.string.follow_system)
                 } else {
@@ -369,8 +344,10 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
             lifecycleScope.launch {
                 PrefManager.isLauncherIconInvisible
                     .flowWithLifecycle(lifecycle)
-                    .collect { value ->
-                        findPreference<AppIconPreference>("launcherIcon")?.isEnabled = !value
+                    .collect { _ ->
+                        findPreference<AppIconPreference>("launcherIcon")?.apply {
+                            updateHolder()
+                        }
                     }
             }
 
@@ -414,49 +391,22 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                 }
             }
 
-            findPreference<Preference>("defaultConfig")?.apply {
-                setOnPreferenceClickListener {
-                    val args = AppSettingsV2FragmentArgs(
-                        packageName = "bulk_config",
-                        inputConfig = ConfigManager.defaultConfig?.toString(),
-                        mode = AppConstants.APP_CONFIG_MODE_DEFAULT_CONFIG,
-                        customSubtitle = getString(R.string.settings_default_config),
-                    )
-                    navigate(R.id.nav_app_settings, args.toBundle())
-
-                    true
-                }
-            }
-
             configureDataIsolation()
 
-            findPreference<MultiSelectListPreference>("disableHooks")?.apply {
-                val allHooks = (ConfigManager.disabledHooks + (ServiceClient.loadedHooks?.map { JsonConfig.HookItem.parse(it) } ?: listOf())).let {
-                    it.sortedWith { item1, item2 ->
-                        fun JsonConfig.HookItem.comparator() = "${className.substringAfterLast('.')}##$methodName"
-
-                        item1.comparator().compareTo(item2.comparator())
-                    }
-                }
-
-                entries = allHooks.map {
-                    val displayedArgCount = if (it.argumentCount >= 0) { "${it.argumentCount} args" } else { "..." }
-
-                    "${it.className.substringAfterLast('.')} -> ${it.methodName}($displayedArgCount)"
-                }.toTypedArray()
-                entryValues = allHooks.map { it.toString() }.toTypedArray()
-            }
-
-            findPreference<Preference>("resetDefault")?.setOnPreferenceClickListener {
+            findPreference<Preference>("stopSystemService")?.setOnPreferenceClickListener {
                 if (ServiceClient.serviceVersion != 0) {
                     MaterialAlertDialogBuilder(requireContext())
-                        .setTitle(R.string.settings_reset_default)
-                        .setMessage(R.string.settings_irreversible_confirmation)
+                        .setTitle(R.string.settings_is_clean_env)
+                        .setMessage(R.string.settings_is_clean_env_summary)
                         .setPositiveButton(R.string.yes) { _, _ ->
-                            ConfigManager.resetConfig()
-                            showToast(android.R.string.ok)
+                            ServiceClient.stopService(true)
+                            showToast(R.string.settings_stop_system_service)
                         }
-                        .setNegativeButton(R.string.no, null)
+                        .setNegativeButton(R.string.no) { _, _ ->
+                            ServiceClient.stopService(false)
+                            showToast(R.string.settings_stop_system_service)
+                        }
+                        .setNeutralButton(android.R.string.cancel, null)
                         .show()
                 } else showToast(R.string.home_xposed_service_off)
                 true

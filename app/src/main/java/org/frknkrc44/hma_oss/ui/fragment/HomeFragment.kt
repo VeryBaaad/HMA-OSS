@@ -1,33 +1,31 @@
 package org.frknkrc44.hma_oss.ui.fragment
 
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.net.toUri
-import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.androidbroadcast.vbpd.viewBinding
 import icu.nullptr.hidemyapplist.MyApp.Companion.hmaApp
 import icu.nullptr.hidemyapplist.common.Constants
-import icu.nullptr.hidemyapplist.common.Utils.conflictedModules
-import icu.nullptr.hidemyapplist.common.Utils.isAppInstalled
 import icu.nullptr.hidemyapplist.data.fetchLatestUpdate
+import icu.nullptr.hidemyapplist.service.ConfigManager
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.attrDrawable
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.getColor
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.homeItemBackgroundColor
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.themeColor
+import icu.nullptr.hidemyapplist.ui.util.contentResolver
 import icu.nullptr.hidemyapplist.ui.util.dp2Px
 import icu.nullptr.hidemyapplist.ui.util.isTestBuild
 import icu.nullptr.hidemyapplist.ui.util.navigate
@@ -40,6 +38,10 @@ import kotlinx.coroutines.withContext
 import org.frknkrc44.hma_oss.BuildConfig
 import org.frknkrc44.hma_oss.R
 import org.frknkrc44.hma_oss.databinding.FragmentHomeBinding
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
@@ -50,14 +52,52 @@ import kotlin.concurrent.thread
 class HomeFragment : Fragment(R.layout.fragment_home) {
     private val binding by viewBinding(FragmentHomeBinding::bind)
 
+    private val backupSAFLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) backup@{ uri ->
+            if (uri == null) return@backup
+            ConfigManager.configFile.inputStream().use { input ->
+                contentResolver.openOutputStream(uri).use { output ->
+                    if (output == null) showToast(R.string.home_export_failed)
+                    else input.copyTo(output)
+                }
+            }
+            showToast(R.string.home_exported)
+        }
+
+    private val restoreSAFLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) restore@{ uri ->
+            if (uri == null) return@restore
+            runCatching {
+                val backup = contentResolver
+                    .openInputStream(uri)?.reader().use { it?.readText() }
+                    ?: throw IOException(getString(R.string.home_import_file_damaged))
+                ConfigManager.importConfig(backup)
+                showToast(R.string.home_import_successful)
+            }.onFailure {
+                it.printStackTrace()
+                MaterialAlertDialogBuilder(requireContext())
+                    .setCancelable(false)
+                    .setTitle(R.string.home_import_failed)
+                    .setMessage(it.message)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .setNegativeButton(R.string.show_crash_log) { _, _ ->
+                        MaterialAlertDialogBuilder(requireActivity())
+                            .setCancelable(false)
+                            .setTitle(R.string.home_import_failed)
+                            .setMessage(it.stackTraceToString())
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
+                    .show()
+            }
+        }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         with(binding.toolbar) {
             setupToolbar(
                 toolbar = this,
                 title = getString(R.string.app_name),
                 isHomeToolbar = true,
-                menuRes = R.menu.menu_home,
-                onMenuOptionSelected = ::onMenuOptionSelected,
             )
             // isTitleCentered = true
         }
@@ -162,9 +202,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     .setMessage(
                         getString(R.string.about_how_to_use_description_1) +
                                 "\n\n" +
-                                getString(R.string.about_how_to_use_description_2) +
-                                "\n\n" +
-                                getString(R.string.about_how_to_use_description_3))
+                                getString(R.string.about_how_to_use_description_2))
                     .setNegativeButton(android.R.string.ok, null)
                     .show()
             }
@@ -210,6 +248,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
         }
 
+        with(binding.navStats) {
+            text1.text = getString(R.string.title_filter_logs)
+            icon.setImageResource(R.drawable.outline_cleaning_services_24)
+            root.setOnClickListener {
+                navigate(R.id.nav_stats)
+            }
+        }
+
         with(binding.navSettings) {
             text1.text = getString(R.string.title_settings)
             icon.setImageResource(R.drawable.outline_settings_24)
@@ -230,10 +276,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (PrefManager.systemWallpaper) background.alpha = 0xAA
 
             setOnClickListener {
-                navigate(
-                    R.id.nav_backup_restore,
-                    BackupRestoreFragmentArgs(true).toBundle()
-                )
+                val date = SimpleDateFormat("yyyy-MM-dd_HH.mm.ss", Locale.getDefault()).format(Date())
+                backupSAFLauncher.launch("HMA-OSS_config_$date.json")
             }
         }
 
@@ -241,10 +285,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (PrefManager.systemWallpaper) background.alpha = 0xAA
 
             setOnClickListener {
-                navigate(
-                    R.id.nav_backup_restore,
-                    BackupRestoreFragmentArgs(false).toBundle()
-                )
+                restoreSAFLauncher.launch("application/json")
             }
         }
 
@@ -255,8 +296,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     fun waitForService() {
         var serviceVersion = ServiceClient.serviceVersion
-        var workMode = ServiceClient.managerWorkMode
-        loadEnabledIndicator(serviceVersion, workMode)
+        loadEnabledIndicator(serviceVersion)
         if (serviceVersion > 0) {
             return
         }
@@ -269,21 +309,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             if (serviceVersion > 0) {
-                workMode = ServiceClient.managerWorkMode
-
                 lifecycleScope.launch {
-                    loadEnabledIndicator(serviceVersion, workMode)
+                    loadEnabledIndicator(serviceVersion)
                 }
             }
         }
     }
 
-    fun loadEnabledIndicator(serviceVersion: Int, workMode: Int) {
-        hmaApp.loadConfiguration()
-
+    fun loadEnabledIndicator(serviceVersion: Int) {
         var color = when {
-            serviceVersion == 0 || workMode == Constants.MANAGER_WORK_MODE_UNKNOWN -> getColor(R.color.invalid)
-            workMode == Constants.MANAGER_WORK_MODE_NO_HOOKS -> getColor(R.color.md_theme_material_amber_light_error)
+            serviceVersion == 0 -> getColor(R.color.invalid)
             else -> themeColor(android.R.attr.colorPrimary)
         }
 
@@ -297,88 +332,28 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             root.outlineSpotShadowColor = color
 
             if (serviceVersion > 0) {
-                if (workMode == Constants.MANAGER_WORK_MODE_NO_HOOKS) {
-                    val colorError = ColorStateList.valueOf(
-                        getColor(R.color.md_theme_material_amber_dark_error))
-                    moduleStatusIcon.imageTintList = colorError
-                    moduleStatusIcon.setImageResource(R.drawable.sick_24px)
+                moduleStatusIcon.setImageResource(R.drawable.sentiment_calm_24px)
+                val versionNameSimple = ServiceClient.serviceVersionName ?: BuildConfig.VERSION_NAME
+                moduleStatus.text =
+                    getString(R.string.home_xposed_activated, versionNameSimple)
+                root.setOnLongClickListener {
+                    ConfigManager.saveConfig()
+                    showToast(android.R.string.ok)
 
-                    moduleStatus.setText(R.string.sick_mode_title)
-                    moduleStatus.setTextColor(colorError)
-                    serviceStatus.setText(R.string.sick_mode_description)
-                    serviceStatus.setTextColor(colorError)
-                    filterCount.setText(R.string.sick_mode_notice)
-                    filterCount.setTextColor(colorError)
+                    true
+                }
 
-                    migrateBtn.isVisible = true
-                    @Suppress("DEPRECATION")
-                    migrateBtn.setOnClickListener {
-                        MaterialAlertDialogBuilder(requireContext())
-                            .setTitle(R.string.home_migrate_data)
-                            .setMessage(R.string.home_migrate_data_summary)
-                            .setPositiveButton(R.string.yes) { _, _ ->
-                                val packages = findUninstallRequiredPackages()
-                                if (packages.size > 1) {
-                                    showMigrateStatusDialog(false)
-                                    return@setPositiveButton
-                                }
-
-                                if (packages.isNotEmpty() && !ServiceClient.migrateData(packages.first())) {
-                                    showMigrateStatusDialog(false)
-                                    return@setPositiveButton
-                                }
-
-                                startActivity(Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
-                                    data = "package:${packages.first()}".toUri()
-                                })
-
-                                showMigrateStatusDialog(true)
-                            }
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .setNeutralButton(R.string.home_migrate_uninstall_only) { _, _ ->
-                                val packages = findUninstallRequiredPackages()
-                                if (packages.size > 1) {
-                                    showMigrateStatusDialog(false)
-                                    return@setNeutralButton
-                                }
-
-                                if (packages.isNotEmpty()) {
-                                    startActivity(Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
-                                        data = "package:${packages.first()}".toUri()
-                                    })
-                                }
-
-                                showMigrateStatusDialog(true)
-                            }
-                            .show()
-                    }
+                if (serviceVersion < org.frknkrc44.hma_oss.common.BuildConfig.SERVICE_VERSION) {
+                    serviceStatus.text =
+                        getString(R.string.home_xposed_service_old)
                 } else {
-                    val image = when(workMode) {
-                        Constants.MANAGER_WORK_MODE_LOADING -> R.drawable.sentiment_stressed_24px
-                        else -> R.drawable.sentiment_calm_24px
-                    }
-
-                    moduleStatusIcon.setImageResource(image)
-
-                    val versionNameSimple = ServiceClient.serviceVersionName ?: BuildConfig.VERSION_NAME
-                    moduleStatus.text =
-                        getString(R.string.home_xposed_activated, versionNameSimple)
-                    root.setOnLongClickListener {
-                        ServiceClient.reloadConfigFromFile()
-                        showToast(android.R.string.ok)
-
-                        true
-                    }
-
                     serviceStatus.text =
                         getString(R.string.home_xposed_service_on, serviceVersion)
-                    filterCount.visibility = View.VISIBLE
-                    filterCount.text =
-                        getString(R.string.home_xposed_filter_count, ServiceClient.filterCount)
                 }
+                filterCount.visibility = View.VISIBLE
+                filterCount.text =
+                    getString(R.string.home_xposed_filter_count, ServiceClient.filterCount)
             } else {
-                val colorError = getColor(android.R.color.black)
-                moduleStatusIcon.imageTintList = ColorStateList.valueOf(colorError)
                 moduleStatusIcon.setImageResource(R.drawable.sentiment_very_dissatisfied_24px)
                 moduleStatus.setText(R.string.home_xposed_not_activated)
                 serviceStatus.setText(R.string.home_xposed_service_off)
@@ -440,32 +415,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
         }
-    }
-
-    private fun onMenuOptionSelected(item: MenuItem) {
-        when (item.itemId) {
-            R.id.menu_info -> {
-                startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    data = "https://github.com/frknkrc44/HMA-OSS/wiki/About-HMA%E2%80%90OSS".toUri()
-                })
-            }
-        }
-    }
-
-    private fun findUninstallRequiredPackages() = conflictedModules.filter {
-        requireContext().packageManager.isAppInstalled(it)
-    }
-
-    private fun showMigrateStatusDialog(success: Boolean) {
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.home_migrate_data)
-            .setMessage(if (success) {
-                R.string.home_migrate_data_completed
-            } else {
-                R.string.home_migrate_data_failed
-            })
-            .setNegativeButton(android.R.string.ok, null)
-            .show()
     }
 
     companion object {

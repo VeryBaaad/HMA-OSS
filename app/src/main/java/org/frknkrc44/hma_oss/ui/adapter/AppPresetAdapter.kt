@@ -2,7 +2,6 @@ package org.frknkrc44.hma_oss.ui.adapter
 
 import android.view.ViewGroup
 import android.widget.Filter
-import icu.nullptr.hidemyapplist.service.ConfigManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.adapter.AppSelectAdapter
 import icu.nullptr.hidemyapplist.ui.view.AppItemView
@@ -17,9 +16,6 @@ class AppPresetAdapter(
     fun updateList() {
         packages.clear()
         packages += ServiceClient.getPackagesForPreset(presetName)?.toList() ?: listOf()
-
-        // do not show ignored packages visually, they will be ignored in the service too
-        packages -= ConfigManager.ignoredPackagesForPresets
     }
 
     inner class ViewHolder(view: AppItemView) : AppSelectAdapter.ViewHolder(view) {
@@ -53,7 +49,7 @@ class AppPresetAdapter(
                     try {
                         val label = PackageHelper.loadAppLabel(it)
                         return@filter label.lowercase().contains(constraintLowered)
-                    } catch (_: Throwable) {
+                    } catch (e: Throwable) {
                         return@filter false
                     }
                 }

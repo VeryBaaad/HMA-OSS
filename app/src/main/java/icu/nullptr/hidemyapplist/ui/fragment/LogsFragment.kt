@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -17,6 +16,8 @@ import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.adapter.LogAdapter
 import icu.nullptr.hidemyapplist.ui.util.contentResolver
+import icu.nullptr.hidemyapplist.ui.util.navController
+import icu.nullptr.hidemyapplist.ui.util.setEdge2EdgeFlags
 import icu.nullptr.hidemyapplist.ui.util.setupToolbar
 import icu.nullptr.hidemyapplist.ui.util.showToast
 import kotlinx.coroutines.launch
@@ -27,10 +28,7 @@ import java.util.Date
 import java.util.Locale
 
 
-class LogsFragment(
-    private val loadingIndicator: View,
-    private val toolbar: Toolbar,
-) : Fragment(R.layout.fragment_logs) {
+class LogsFragment : Fragment(R.layout.fragment_logs) {
 
     private val binding by viewBinding(FragmentLogsBinding::bind)
     private val adapter by lazy { LogAdapter(requireContext()) }
@@ -64,7 +62,7 @@ class LogsFragment(
 
         if (binding.serviceOff.isVisible) return
 
-        loadingIndicator.isVisible = true
+        binding.loadingIndicator.isVisible = true
 
         MyApp.hmaApp.globalScope.launch {
             logCache = try {
@@ -95,7 +93,7 @@ class LogsFragment(
                 }
 
                 lifecycleScope.launch {
-                    loadingIndicator.isVisible = false
+                    binding.loadingIndicator.visibility = View.INVISIBLE
                     adapter.logs = logList
                 }
             }
@@ -103,7 +101,7 @@ class LogsFragment(
     }
 
     private fun onMenuOptionSelected(item: MenuItem) {
-        if (loadingIndicator.isVisible) return
+        if (binding.loadingIndicator.isVisible) return
 
         when (item.itemId) {
             R.id.menu_refresh -> updateLogs()
@@ -144,23 +142,19 @@ class LogsFragment(
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        binding.list.layoutManager = LinearLayoutManager(context)
-        binding.list.adapter = adapter
-        binding.list.addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
-        updateLogs()
-    }
+        with(binding.toolbar) {
+            setupToolbar(
+                toolbar = this,
+                title = getString(R.string.title_logs),
+                menuRes = R.menu.menu_logs,
+                onMenuOptionSelected = this@LogsFragment::onMenuOptionSelected
+            )
+            setNavigationIcon(R.drawable.baseline_arrow_back_24)
+            setNavigationOnClickListener { navController.popBackStack() }
+            // isTitleCentered = true
+        }
 
-    override fun onResume() {
-        super.onResume()
-
-        setupToolbar(
-            toolbar,
-            title = getString(R.string.title_logs),
-            menuRes = R.menu.menu_logs,
-            onMenuOptionSelected = this::onMenuOptionSelected,
-        )
-
-        with(toolbar.menu) {
+        with(binding.toolbar.menu) {
             when (PrefManager.logFilter_level) {
                 0 -> findItem(R.id.menu_filter_debug).isChecked = true
                 1 -> findItem(R.id.menu_filter_info).isChecked = true
@@ -169,5 +163,12 @@ class LogsFragment(
             }
             findItem(R.id.menu_reverse_order).isChecked = PrefManager.logFilter_reverseOrder
         }
+
+        binding.list.layoutManager = LinearLayoutManager(context)
+        binding.list.adapter = adapter
+        binding.list.addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
+        updateLogs()
+
+        setEdge2EdgeFlags(binding.root)
     }
 }

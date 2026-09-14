@@ -13,14 +13,10 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
-import coil3.load
-import coil3.request.crossfade
-import coil3.request.placeholder
-import coil3.request.transformations
-import coil3.transform.CircleCropTransformation
+import com.bumptech.glide.Glide
 import dev.androidbroadcast.vbpd.viewBinding
 import icu.nullptr.hidemyapplist.common.Constants
-import icu.nullptr.hidemyapplist.data.AppConstants.allAppIcons
+import icu.nullptr.hidemyapplist.service.ConfigManager
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.ui.util.AccessibilityUtils
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.homeItemBackgroundColor
@@ -58,12 +54,14 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
                 backgroundTintList = tint
             }
 
-            val activityName = findEnabledAppComponent(requireContext())
-            appIcon.setImageResource(
-                activityName?.let {
-                    allAppIcons.firstOrNull { it.second == activityName.className }?.first
-                } ?: R.mipmap.ic_launcher
-            )
+            Glide.with(this@AboutFragment).let {
+                val activityName = findEnabledAppComponent(requireContext())
+                return@let if (activityName == null) {
+                    it.load(R.mipmap.ic_launcher)
+                } else {
+                    it.load(requireContext().packageManager.getActivityIcon(activityName))
+                }
+            }.circleCrop().into(appIcon)
 
             appName.setText(R.string.app_name)
             appVersion.text = BuildConfig.APP_VERSION_NAME
@@ -141,8 +139,8 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             backgroundTintList = tint
             clipToOutline = true
 
-            addLibraryItem(this, "ZygoteLoader (fork)", "MIT License", "https://github.com/aerath-stuff/ZygoteLoader")
-            addLibraryItem(this, "Coil", "Apache-2.0 License", "https://github.com/coil-kt/coil")
+            addLibraryItem(this, "EzXHelper", "Apache Software License 2.0", "https://github.com/KyuubiRan/EzXHelper")
+            addLibraryItem(this, "Glide", "Simplified BSD License", "https://github.com/bumptech/glide")
         }
     }
 
@@ -176,14 +174,11 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         val newLayout = FragmentAboutListItemBinding.inflate(layoutInflater)
 
         if (PrefManager.enableInternet == Constants.ENABLE_INTERNET_ON) {
-            newLayout.aboutPersonIcon.load(
-                avatarUrl,
-                builder = {
-                    crossfade(true)
-                    placeholder(R.drawable.outline_info_24)
-                    transformations(CircleCropTransformation())
-                }
-            )
+            Glide.with(this)
+                .load(avatarUrl)
+                .placeholder(R.drawable.outline_info_24)
+                .circleCrop()
+                .into(newLayout.aboutPersonIcon)
         } else {
             newLayout.aboutPersonIcon.isVisible = false
         }

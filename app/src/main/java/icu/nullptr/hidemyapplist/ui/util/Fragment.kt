@@ -105,7 +105,6 @@ fun Fragment.setupToolbar(
                 } ?: false
             }
         }
-        toolbar.menu.clear()
         toolbar.inflateMenu(menuRes)
         toolbar.setOnMenuItemClickListener(menuProvider::onMenuItemSelected)
         requireActivity().addMenuProvider(menuProvider)

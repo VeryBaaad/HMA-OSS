@@ -3,26 +3,25 @@ package icu.nullptr.hidemyapplist.common
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageManager
 import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Binder
 import android.os.Build
-import icu.nullptr.hidemyapplist.common.CollectionUtils.removeIf
-import kotlinx.serialization.json.Json
+import java.util.Random
 import java.util.zip.ZipFile
 
 object Utils {
 
-    fun generateRandomString(length: Int, allowedChars: List<Char>): String {
-        return (0 until length)
-            .map { allowedChars.random() }
-            .joinToString("")
+    fun generateRandomString(length: Int): String {
+        val leftLimit = 97   // letter 'a'
+        val rightLimit = 122 // letter 'z'
+        val random = Random()
+        val buffer = StringBuilder(length)
+        for (i in 0 until length) {
+            val randomLimitedInt = leftLimit + (random.nextFloat() * (rightLimit - leftLimit + 1)).toInt()
+            buffer.append(randomLimitedInt.toChar())
+        }
+        return buffer.toString()
     }
-
-    fun generateRandomHex(length: Int) = generateRandomString(
-        length,
-        ('a' .. 'f') + ('0' .. '9'),
-    )
 
     fun <T> binderLocalScope(block: () -> T): T {
         val identity = Binder.clearCallingIdentity()
@@ -31,53 +30,60 @@ object Utils {
         return result
     }
 
-    fun IPackageManager.getInstalledApplicationsCompat(flags: Long, userId: Int): List<ApplicationInfo> {
+    fun getInstalledApplicationsCompat(pms: IPackageManager, flags: Long, userId: Int): List<ApplicationInfo> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            this.getInstalledApplications(flags, userId)
+            pms.getInstalledApplications(flags, userId)
         } else {
-            this.getInstalledApplications(flags.toInt(), userId)
+            pms.getInstalledApplications(flags.toInt(), userId)
         }.list
     }
 
-    fun IPackageManager.getPackageUidCompat(packageName: String, flags: Long, userId: Int): Int {
+    fun getPackageUidCompat(pms: IPackageManager, packageName: String, flags: Long, userId: Int): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            this.getPackageUid(packageName, flags, userId)
+            pms.getPackageUid(packageName, flags, userId)
         } else {
-            this.getPackageUid(packageName, flags.toInt(), userId)
+            pms.getPackageUid(packageName, flags.toInt(), userId)
         }
     }
 
-    fun IPackageManager.getPackageInfoCompat(packageName: String, flags: Long, userId: Int): PackageInfo? {
+    fun getPackageInfoCompat(pms: IPackageManager, packageName: String, flags: Long, userId: Int): PackageInfo? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            this.getPackageInfo(packageName, flags, userId)
+            pms.getPackageInfo(packageName, flags, userId)
         } else {
-            this.getPackageInfo(packageName, flags.toInt(), userId)
+            pms.getPackageInfo(packageName, flags.toInt(), userId)
         }
     }
 
-    fun String?.startsWithMultiple(vararg targets: String): Boolean {
-        if (isNullOrEmpty() || targets.isEmpty()) return false
+    fun startsWithMultiple(source: String, vararg targets: String): Boolean {
+        assert(source.isNotEmpty() && targets.isNotEmpty())
 
-        return targets.any { startsWith(it) }
+        return targets.any { source.startsWith(it) }
     }
 
-    fun String?.endsWithMultiple(vararg targets: String): Boolean {
-        if (isNullOrEmpty() || targets.isEmpty()) return false
+    fun endsWithMultiple(source: String, vararg targets: String): Boolean {
+        assert(source.isNotEmpty() && targets.isNotEmpty())
 
-        return targets.any { endsWith(it) }
+        return targets.any { source.endsWith(it) }
     }
 
-    fun String?.containsMultiple(vararg targets: String): Boolean {
-        if (isNullOrEmpty() || targets.isEmpty()) return false
+    fun containsMultiple(source: String, vararg targets: String): Boolean {
+        assert(source.isNotEmpty() && targets.isNotEmpty())
 
-        return targets.any { contains(it) }
+        return targets.any { source.contains(it) }
     }
 
-    fun ResolveInfo.getPackageName(): String {
-        return resolvePackageName ?:
-            activityInfo?.packageName ?:
-            serviceInfo?.packageName ?:
-            providerInfo!!.packageName
+    fun generateRandomHex(length: Int): String {
+        val allowedChars = ('a'..'f') + ('0'..'9')
+        return (1..length)
+            .map { allowedChars.random() }
+            .joinToString("")
+    }
+
+    fun getPackageNameFromResolveInfo(resolveInfo: ResolveInfo): String {
+        return resolveInfo.resolvePackageName ?:
+            resolveInfo.activityInfo?.packageName ?:
+            resolveInfo.serviceInfo?.packageName ?:
+            resolveInfo.providerInfo!!.packageName
     }
 
     fun checkSplitPackages(appInfo: ApplicationInfo, onZipFile: (String, ZipFile) -> Boolean): Boolean {
@@ -94,40 +100,5 @@ object Utils {
 
             return false
         }
-    }
-
-    fun JsonConfig.cleanRemnantsFromConfig() {
-        // STEP 1: Remove empty app and settings templates
-        templates.removeIf { _, template -> template.appList.isEmpty() }
-        settingsTemplates.removeIf { _, template -> template.settingsList.isEmpty() }
-
-        // STEP 2: Remove mismatching items
-        for (app in scope.values) {
-            app.applyTemplates.removeIf { !templates.containsKey(it) }
-            app.applyPresets.removeIf { it !in AppPresets.instance.presetNames }
-            app.applySettingTemplates.removeIf { !settingsTemplates.containsKey(it) }
-            app.applySettingsPresets.removeIf { it !in SettingsPresets.instance.presetNames }
-        }
-    }
-
-    fun getUserFromCallingUid(uid: Int) = uid / 100000
-
-    fun IPackageManager.isAppInstalled(packageName: String, userId: Int = 0) =
-        getPackageUidCompat(packageName, 0, userId) >= 0
-
-    fun PackageManager.isAppInstalled(packageName: String) = try {
-        getPackageUid(packageName, 0) >= 0
-    } catch (_: Throwable) {
-        false
-    }
-
-    fun ApplicationInfo.isSystemApp() = flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
-            flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
-
-    val conflictedModules = arrayOf("com.tsng.hidemyapplist", "com.google.android.hmal")
-
-    val encoder = Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
     }
 }

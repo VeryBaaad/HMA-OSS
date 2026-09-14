@@ -9,8 +9,7 @@ abstract class BasePreset(val name: String) {
 
     protected abstract fun canBeAddedIntoPreset(appInfo: ApplicationInfo): Boolean
 
-    internal fun containsPackage(packageName: String) =
-        exactPackageNames.contains(packageName) || packageNames.contains(packageName)
+    fun containsPackage(packageName: String) = exactPackageNames.contains(packageName) || packageNames.contains(packageName)
 
     val packages get() = packageNames + exactPackageNames
 

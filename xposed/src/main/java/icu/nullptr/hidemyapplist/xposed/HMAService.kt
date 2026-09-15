@@ -80,7 +80,6 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
     val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val uidHideCache = mutableListOf<Triple<Int, String, MutableList<String>>>()
 
-    /** Long running preset reload, tracked so it can be stopped on hot reload. */
     @Volatile
     private var presetThread: Thread? = null
 

@@ -50,39 +50,6 @@ Additionally, some apps use various loopholes to acquire your app list, in order
 
 This module can work as an Xposed module to hide apps or reject app list requests.
 
-## Xposed API
-
-HMA-OSS is built against the **Modern Xposed API** (`io.github.libxposed:api`, libxposed
-102.0.0) instead of the legacy `de.robv.android.xposed` bridge:
-
-* the entry point extends `io.github.libxposed.api.XposedModule` and is declared in
-  `META-INF/xposed/java_init.list`;
-* module metadata lives in `META-INF/xposed/module.prop`, the scope is the single
-  `system` package in `META-INF/xposed/scope.list`, so the module is injected into
-  `system_server` where the package manager, activity manager, accessibility, input
-  method, storage and settings provider hooks run;
-* hooks use the interceptor chain model (`Hooker` / `Chain`) instead of
-  `XC_MethodHook`, and `EzXHelper` has been replaced by the small reflection layer in
-  `icu.nullptr.hidemyapplist.xposed.bridge`.
-
-### Hot reload (API 102)
-
-Hot reload is an API 102 feature and is fully supported: `XposedEntry.onHotReloading`
-stops the module owned threads and unhooks everything, hands class loader neutral
-binder references to the next generation, and `XposedEntry.onHotReloaded` rebuilds the
-hooks in the new code.
-
-The module declares `minApiVersion=101` and `targetApiVersion=102`. On an **API 101
-framework hot reload is disabled**: `getApiVersion()` is checked at runtime, API 102
-only calls such as `HookBuilder.setId`, `HookHandle.getId` and `HookHandle.replaceHook`
-are skipped, and `onHotReloading` returns `false` so the framework keeps running the
-current generation.
-
-The manager app connects to the framework through
-`io.github.libxposed:service` (`XposedServiceHelper` / `XposedService`), which is what
-the *Hot reload module* entry in the log screen uses; the HMA-OSS specific
-`IHMAService` binder is still used to exchange the configuration with the hooks.
-
 ## About HMA-OSS
 
 https://github.com/frknkrc44/HMA-OSS/wiki

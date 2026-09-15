@@ -6,14 +6,11 @@ material = "1.14.0"
 hidden-api = "4.4.0"
 androidx-navigation = "2.10.1"
 vbpd = "2.0.4"
-# Modern Xposed API (https://github.com/libxposed)
 libxposed = "102.0.0"
 
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
 agp-lib = { id = "com.android.library", version.ref = "agp" }
-# NOTE: org.jetbrains.kotlin.android is intentionally absent, AGP 9 provides Kotlin
-# support itself and applying that plugin is a hard error.
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 nav-safeargs-kotlin = { id = "androidx.navigation.safeargs.kotlin", version.ref = "androidx-navigation" }
 refine = { id = "dev.rikka.tools.refine", version = "4.4.0" }

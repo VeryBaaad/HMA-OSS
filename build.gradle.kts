@@ -6,8 +6,6 @@ import org.gradle.api.NamedDomainObjectContainer
 import org.jetbrains.kotlin.konan.properties.Properties
 
 plugins {
-    // Kotlin support is built into AGP 9, applying org.jetbrains.kotlin.android here is
-    // an error since AGP 9.0.
     alias(libs.plugins.agp.app) apply false
     alias(libs.plugins.agp.lib) apply false
     alias(libs.plugins.nav.safeargs.kotlin) apply false
@@ -61,12 +59,6 @@ val gitCommitCountAfterOss = gitCommitCount - 432
 val minSdkVer = 29
 val targetSdkVer = 36
 
-/*
- * The Modern Xposed artifacts (io.github.libxposed:api / :service, 102.0.0) declare
- * minCompileSdk 37 in their AAR metadata, therefore the project has to compile against
- * android-37 even though it still targets android-36. The minor API level (37.1) is
- * requested through the `compileSdk { }` block in configureBaseExtension().
- */
 val compileSdkVer = 37
 val compileSdkMinorVer = 1
 
@@ -87,11 +79,6 @@ val appPackageName = "org.frknkrc44.hma_oss"
 val crowdinProjectId = localProperties.getProperty("crowdinProjectId", "")
 val crowdinApiKey = localProperties.getProperty("crowdinApiKey", "")
 
-/*
- * Shared build configuration, published through `extra` so that the subprojects can read
- * it with `rootProject.extra["name"]`. The `val name by extra(value)` delegate syntax is
- * deprecated since Gradle 9 and will be removed in Gradle 10.
- */
 mapOf<String, Any>(
     "minSdkVer" to minSdkVer,
     "targetSdkVer" to targetSdkVer,
@@ -124,8 +111,6 @@ fun Project.configureBaseExtension() {
     val appVerCode: Int = rootProject.extra["appVerCode"] as Int
     val appVerName: String = rootProject.extra["appVerName"] as String
 
-    // `compileSdkVersion(Int)` is the legacy accessor. Only the modern `compileSdk { }`
-    // block can request a minor API level, which is what android-37.1 needs.
     extensions.findByType(CommonExtension::class.java)?.apply {
         compileSdk {
             version = release(compileSdkVer) {
@@ -175,9 +160,7 @@ fun Project.configureBaseExtension() {
         }
 
         dependenciesInfo {
-            // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
             includeInApk = false
-            // Disables dependency metadata when building Android App Bundles (for Google Play)
             includeInBundle = false
         }
     }

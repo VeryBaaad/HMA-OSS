@@ -94,19 +94,5 @@
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
 
-        <!--
-          The Modern Xposed (libxposed) service bridge is contributed by the
-          io.github.libxposed:service artifact: it declares
-          io.github.libxposed.service.XposedProvider with the authority
-          "${applicationId}.XposedService". The framework sends its IXposedService
-          binder there, which lets the manager query the framework and trigger a hot
-          reload. It must NOT be redeclared here or the manifest merger conflicts.
-        -->
-
-        <!--
-          Legacy `xposedmodule` / `xposedscope` metadata is intentionally gone: the
-          module is described by META-INF/xposed/module.prop, java_init.list and
-          scope.list, which the Modern Xposed framework reads from the APK.
-        -->
     </application>
 </manifest>

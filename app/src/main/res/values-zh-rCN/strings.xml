@@ -34,12 +34,19 @@
     <string name="apply">应用</string>
     <string name="follow_system">跟随系统</string>
     <!-- Home -->
+    <string name="xposed_description">隐藏一堆东西。</string>
     <string name="home_xposed_activated">模块已激活 [%s]</string>
     <string name="home_xposed_not_activated">模块未激活</string>
     <string name="home_xposed_service_on">系统服务运行中 [%d]</string>
     <string name="home_xposed_service_off">系统服务未运行</string>
     <string name="home_xposed_service_old">模块已更新，需要重启设备</string>
     <string name="home_xposed_filter_count">隐藏应用列表已经执行了 %d 次拦截</string>
+    <string name="home_xposed_framework">框架: %1$s %2$s (API %3$d)</string>
+    <string name="home_xposed_hot_reload">进行热重载</string>
+    <string name="home_xposed_hot_reload_unsupported">热重载需要 Modern Xposed API 102 (当前 API：%d)</string>
+    <string name="home_xposed_hot_reload_none">未找到正在运行的进程</string>
+    <string name="home_xposed_hot_reload_started">已对 %d 进程发送热重载请求</string>
+    <string name="home_xposed_hot_reload_result">%1$s: %2$s</string>
     <string name="home_manage">管理</string>
     <string name="home_detection_test">拦截测试</string>
     <string name="home_download_test_app_title">下载拦截测试应用</string>

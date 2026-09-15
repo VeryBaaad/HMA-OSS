@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import icu.nullptr.hidemyapplist.receiver.AppChangeReceiver
 import icu.nullptr.hidemyapplist.service.ConfigManager
+import icu.nullptr.hidemyapplist.service.FrameworkService
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.util.showToast
@@ -39,6 +40,9 @@ class MyApp : Application() {
         }
         AppChangeReceiver.register(this)
         ConfigManager.init()
+        // Connect to the Xposed framework service, needed for scope queries and for the
+        // API 102 hot reload request.
+        FrameworkService.init()
 
         AppCompatDelegate.setDefaultNightMode(PrefManager.darkTheme)
         val config = resources.configuration

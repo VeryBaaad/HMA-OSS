@@ -5,13 +5,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.UserHandle
 import android.util.ArrayMap
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.findMethodOrNull
-import com.github.kyuubiran.ezxhelper.utils.hookAfter
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedHelpers
-import de.robv.android.xposed.XposedHelpers.callMethod
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.common.Constants.VENDING_PACKAGE_NAME
 import icu.nullptr.hidemyapplist.common.OSUtils
@@ -25,6 +18,12 @@ import icu.nullptr.hidemyapplist.xposed.Utils4Xposed.getPackageNameFromPackageSe
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.COMPUTER_ENGINE_CLASS
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.PACKAGE_MANAGER_SERVICE_CLASS
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.PMS_COMPUTER_TRACKER_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookAfter
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.methodName
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 import java.util.concurrent.atomic.AtomicReference
 
 abstract class PmsHookTargetBase(protected val service: HMAService) : IFrameworkHook {
@@ -34,7 +33,7 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
 
     private val androidPkgClazzNames = arrayOf("AndroidPackage", "PackageImpl")
 
-    protected val hooks = mutableListOf<XC_MethodHook.Unhook>()
+    protected val hooks = mutableListOf<HookHandle>()
     protected var lastFilteredApp: AtomicReference<String?> = AtomicReference(null)
 
     protected val psPackageInfo by lazy {
@@ -55,9 +54,9 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
 
     override fun load() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            hooks += findMethod(COMPUTER_ENGINE_CLASS) {
-                name == "getPackageStates"
-            }.hookAfter { param ->
+            hooks += Reflect.findMethod(COMPUTER_ENGINE_CLASS) {
+                it.name == "getPackageStates"
+            }.hookAfter("pms:getPackageStates") { param ->
                 val callingUid = Binder.getCallingUid()
                 if (callingUid == Constants.UID_SYSTEM) return@hookAfter
 
@@ -71,7 +70,7 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
 
                     for (pair in result.entries) {
                         val value = pair.value
-                        val packageName = XposedHelpers.callMethod(value, "getPackageName") as String
+                        val packageName = Reflect.callMethod(value, "getPackageName") as String
                         if (service.shouldHide(caller, packageName)) {
                             markedToRemove.add(pair.key)
                         }
@@ -89,11 +88,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
 
             // Samsung related fix
             if (OSUtils.isSamsung()) {
-                findMethod(COMPUTER_ENGINE_CLASS) {
-                    name == "generatePackageInfo"
-                }.hookBefore { param ->
+                Reflect.findMethod(COMPUTER_ENGINE_CLASS) {
+                    it.name == "generatePackageInfo"
+                }.hookBefore("pms:generatePackageInfo") { param ->
                     applyPackageHiding(
-                        param.method.name,
+                        param.methodName,
                         { Binder.getCallingUid() },
                         { getPackageNameFromPackageSettings(param.args[0]) },
                         { getCallingApps(service, it) },
@@ -104,11 +103,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
 
             // Samsung devices can fail to get this hook working,
             // but it is okay due to generatePackageInfo hook
-            findMethodOrNull(COMPUTER_ENGINE_CLASS) {
-                name == "addPackageHoldingPermissions"
-            }?.hookBefore { param ->
+            Reflect.findMethodOrNull(COMPUTER_ENGINE_CLASS) {
+                it.name == "addPackageHoldingPermissions"
+            }?.hookBefore("pms:addPackageHoldingPermissions") { param ->
                 applyPackageHiding(
-                    param.method.name,
+                    param.methodName,
                     { Binder.getCallingUid() },
                     { getPackageNameFromPackageSettings(param.args[1]) },
                     { getCallingApps(service, it) },
@@ -119,16 +118,16 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
                 hooks += it
             }
 
-            hooks += findMethod(COMPUTER_ENGINE_CLASS) {
-                name == "isCallerInstallerOfRecord"
-            }.hookBefore { param ->
+            hooks += Reflect.findMethod(COMPUTER_ENGINE_CLASS) {
+                it.name == "isCallerInstallerOfRecord"
+            }.hookBefore("pms:isCallerInstallerOfRecord") { param ->
                 val callingUid = param.args.last() as Int
                 if (callingUid == Constants.UID_SYSTEM) return@hookBefore
 
                 val pkg = param.args.lastOrNull {
                     it?.javaClass?.simpleName in androidPkgClazzNames
                 } ?: return@hookBefore
-                val query = callMethod(
+                val query = Reflect.callMethod(
                     pkg,
                     if (pkg.javaClass.simpleName == "PackageImpl") {
                         "getManifestPackageName"
@@ -151,11 +150,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
                 }
             }
 
-            hooks += findMethod(COMPUTER_ENGINE_CLASS) {
-                name == "getPackageInfoInternal"
-            }.hookBefore { param ->
+            hooks += Reflect.findMethod(COMPUTER_ENGINE_CLASS) {
+                it.name == "getPackageInfoInternal"
+            }.hookBefore("pms:getPackageInfoInternal") { param ->
                 applyPackageHiding(
-                    param.method.name,
+                    param.methodName,
                     { param.args.firstOrNull { it is Int } as? Int },
                     { param.args.firstOrNull { it is String } as? String },
                     { getCallingApps(service, it) },
@@ -163,11 +162,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
                 )
             }
 
-            hooks += findMethod(COMPUTER_ENGINE_CLASS) {
-                name == "getApplicationInfoInternal"
-            }.hookBefore { param ->
+            hooks += Reflect.findMethod(COMPUTER_ENGINE_CLASS) {
+                it.name == "getApplicationInfoInternal"
+            }.hookBefore("pms:getApplicationInfoInternal") { param ->
                 applyPackageHiding(
-                    param.method.name,
+                    param.methodName,
                     { param.args.firstOrNull { it is Int } as? Int },
                     { param.args.firstOrNull { it is String } as? String },
                     { getCallingApps(service, it) },
@@ -181,11 +180,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
                 PACKAGE_MANAGER_SERVICE_CLASS
             }
 
-            hooks += findMethod(clazzToHook) {
-                name == "getPackageInfoInternal"
-            }.hookBefore { param ->
+            hooks += Reflect.findMethod(clazzToHook) {
+                it.name == "getPackageInfoInternal"
+            }.hookBefore("pms:getPackageInfoInternal") { param ->
                 applyPackageHiding(
-                    param.method.name,
+                    param.methodName,
                     { param.args[3] as Int? },
                     { param.args[0] as String? },
                     { getCallingApps(service, it) },
@@ -193,11 +192,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
                 )
             }
 
-            hooks += findMethod(clazzToHook) {
-                name == "getApplicationInfoInternal"
-            }.hookBefore { param ->
+            hooks += Reflect.findMethod(clazzToHook) {
+                it.name == "getApplicationInfoInternal"
+            }.hookBefore("pms:getApplicationInfoInternal") { param ->
                 applyPackageHiding(
-                    param.method.name,
+                    param.methodName,
                     { param.args[2] as Int? },
                     { param.args[0] as String? },
                     { getCallingApps(service, it) },
@@ -206,10 +205,11 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
             }
         }
 
-        if (service.pmn != null) {
-            findMethodOrNull(service.pmn::class.java, findSuper = true) {
-                name == "getInstallerForPackage"
-            }?.hookBefore { param ->
+        val pmn = service.pmn
+        if (pmn != null) {
+            Reflect.findMethodOrNull(pmn::class.java, findSuper = true) {
+                it.name == "getInstallerForPackage"
+            }?.hookBefore("pms:getInstallerForPackage") { param ->
                 val query = param.args[0] as String?
 
                 val callingUid = Binder.getCallingUid()
@@ -235,9 +235,9 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            findMethodOrNull(service.pms::class.java, findSuper = true) {
-                name == "getInstallSourceInfo"
-            }?.hookBefore { param ->
+            Reflect.findMethodOrNull(service.pms::class.java, findSuper = true) {
+                it.name == "getInstallSourceInfo"
+            }?.hookBefore("pms:getInstallSourceInfo") { param ->
                 val query = param.args[0] as String?
 
                 val callingUid = Binder.getCallingUid()
@@ -261,9 +261,9 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
             }
         }
 
-        hooks += findMethod(service.pms::class.java, findSuper = true) {
-            name == "getInstallerPackageName"
-        }.hookBefore { param ->
+        hooks += Reflect.findMethod(service.pms::class.java, findSuper = true) {
+            it.name == "getInstallerPackageName"
+        }.hookBefore("pms:getInstallerPackageName") { param ->
             val query = param.args[0] as String?
 
             val callingUid = Binder.getCallingUid()
@@ -315,7 +315,6 @@ abstract class PmsHookTargetBase(protected val service: HMAService) : IFramework
     }
 
     final override fun unload() {
-        hooks.forEach(XC_MethodHook.Unhook::unhook)
-        hooks.clear()
+        hooks.unhookAll()
     }
 }

@@ -69,7 +69,7 @@ fun Fragment.setupToolbar(
                 textSize = dp2Px(toolbar.resources, 24)
                 gravity = Gravity.CENTER
                 typeface = Typeface.SERIF
-                onChronometerTickListener = {
+                onChronometerTickListener = Chronometer.OnChronometerTickListener {
                     if (elapsedRealtime() >= base) {
                         stop()
                         dialog.dismiss()

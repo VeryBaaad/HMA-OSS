@@ -19,6 +19,7 @@ import icu.nullptr.hidemyapplist.MyApp.Companion.hmaApp
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.data.fetchLatestUpdate
 import icu.nullptr.hidemyapplist.service.ConfigManager
+import icu.nullptr.hidemyapplist.service.FrameworkService
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.util.ThemeUtils.attrDrawable
@@ -292,6 +293,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         lifecycleScope.launch {
             loadDialogs()
         }
+
+        // Keep the framework line in sync with the Modern Xposed service connection.
+        lifecycleScope.launch {
+            FrameworkService.framework.collect {
+                if (isAdded) {
+                    binding.statusCard.frameworkInfo.text = formatFrameworkInfo()
+                }
+            }
+        }
     }
 
     fun waitForService() {
@@ -350,6 +360,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     serviceStatus.text =
                         getString(R.string.home_xposed_service_on, serviceVersion)
                 }
+                frameworkInfo.text = formatFrameworkInfo()
                 filterCount.visibility = View.VISIBLE
                 filterCount.text =
                     getString(R.string.home_xposed_filter_count, ServiceClient.filterCount)
@@ -357,9 +368,28 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 moduleStatusIcon.setImageResource(R.drawable.sentiment_very_dissatisfied_24px)
                 moduleStatus.setText(R.string.home_xposed_not_activated)
                 serviceStatus.setText(R.string.home_xposed_service_off)
+                frameworkInfo.text = formatFrameworkInfo()
                 filterCount.visibility = View.GONE
             }
         }
+    }
+
+    /**
+     * Human readable summary of the Xposed framework the manager app is connected to.
+     *
+     * The connection is provided by the Modern Xposed API service
+     * ([icu.nullptr.hidemyapplist.service.FrameworkService]); the API version decides
+     * whether API 102 features such as hot reload are available.
+     */
+    private fun formatFrameworkInfo(): String? {
+        val framework = FrameworkService.currentFramework ?: return null
+
+        return getString(
+            R.string.home_xposed_framework,
+            framework.name,
+            framework.version,
+            framework.apiVersion,
+        )
     }
 
     private fun loadDialogs() {

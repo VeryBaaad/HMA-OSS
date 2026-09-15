@@ -3,15 +3,6 @@ package icu.nullptr.hidemyapplist.xposed.hook
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.os.Build
-import com.github.kyuubiran.ezxhelper.init.InitFields
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.findMethodOrNull
-import com.github.kyuubiran.ezxhelper.utils.hookAfter
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedHelpers.findClass
-import de.robv.android.xposed.XposedHelpers.getObjectField
-import de.robv.android.xposed.XposedHelpers.getStaticIntField
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.common.OSUtils
 import icu.nullptr.hidemyapplist.common.Utils
@@ -26,33 +17,39 @@ import icu.nullptr.hidemyapplist.xposed.XposedConstants.ACTIVITY_STARTER_CLASS
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.ACTIVITY_TASK_SUPERVISOR_CLASS
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.COMPUTER_ENGINE_CLASS
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.PACKAGE_MANAGER_SERVICE_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.XposedEnvironment
+import icu.nullptr.hidemyapplist.xposed.bridge.declaringClass
+import icu.nullptr.hidemyapplist.xposed.bridge.hookAfter
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.methodName
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 
 class ActivityHook(private val service: HMAService) : IFrameworkHook {
     companion object {
         private const val TAG = "ActivityHook"
         private val fakeReturnCode by lazy {
-            getStaticIntField(
-                findClass(
-                    "android.app.ActivityManager",
-                    InitFields.ezXClassLoader
-                ),
+            Reflect.getStaticIntField(
+                Reflect.findClassOrNull("android.app.ActivityManager", XposedEnvironment.classLoader)
+                    ?: throw ClassNotFoundException("android.app.ActivityManager"),
                 "START_CLASS_NOT_FOUND"
             )
         }
     }
 
-    private val hooks = mutableListOf<XC_MethodHook.Unhook>()
+    private val hooks = mutableListOf<HookHandle>()
 
     override fun load() {
         logI(TAG) { "Load hook" }
 
-        hooks += findMethod(ACTIVITY_STARTER_CLASS) {
-            name == "execute"
-        }.hookBefore { param ->
+        hooks += Reflect.findMethod(ACTIVITY_STARTER_CLASS) {
+            it.name == "execute"
+        }.hookBefore("activity:starterExecute") { param ->
             runCatching {
-                val request = getObjectField(param.thisObject, "mRequest")
-                val caller = getObjectField(request, "callingPackage") as String?
-                val intent = getObjectField(request, "intent") as Intent?
+                val request = Reflect.getObjectField(param.thisObject, "mRequest")
+                val caller = Reflect.getObjectField(request, "callingPackage") as String?
+                val intent = Reflect.getObjectField(request, "intent") as Intent?
                 val targetApp = intent?.component?.packageName
 
                 if (service.shouldHideActivityLaunch(caller, targetApp)) {
@@ -68,17 +65,19 @@ class ActivityHook(private val service: HMAService) : IFrameworkHook {
             }
         }
 
-        findMethodOrNull(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Reflect.findMethodOrNull(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ACTIVITY_TASK_SUPERVISOR_CLASS
         } else {
             ACTIVITY_STACK_SUPERVISOR_CLASS
         }) {
-            name == "checkStartAnyActivityPermission"
-        }?.hookAfter { param ->
-            var throwable = param.throwable
+            it.name == "checkStartAnyActivityPermission"
+        }?.hookAfter("activity:checkStartAnyActivityPermission") { param ->
+            var throwable: Throwable? = param.throwable
 
             while (throwable != null) {
-                val newTrace = throwable.stackTrace.filter { item ->
+                val current = throwable
+                val oldTrace = current.stackTrace
+                val newTrace = oldTrace.filter { item ->
                     !Utils.containsMultiple(
                         item.className,
                         "HookBridge",
@@ -87,25 +86,25 @@ class ActivityHook(private val service: HMAService) : IFrameworkHook {
                     )
                 }
 
-                if (newTrace.size != throwable.stackTrace.size) {
-                    throwable.stackTrace = newTrace.toTypedArray()
+                if (newTrace.size != oldTrace.size) {
+                    current.stackTrace = newTrace.toTypedArray()
 
                     val callingUid = param.args.lastOrNull { it is Int } as Int?
 
-                    logD(TAG) { "@checkStartAnyActivityPermission: ${throwable.stackTrace.size - newTrace.size} remnants cleared for $callingUid!" }
+                    logD(TAG) { "@checkStartAnyActivityPermission: ${oldTrace.size - newTrace.size} remnants cleared for $callingUid!" }
 
                     service.increaseALFilterCount(callingUid)
                 }
 
-                throwable = throwable.cause
+                throwable = current.cause
             }
         }?.let {
             hooks += it
-            logD(TAG) { "Loaded ${it.hookedMethod.name} hook from ${it.hookedMethod.declaringClass}!" }
+            logD(TAG) { "Loaded ${it.methodName} hook from ${it.declaringClass}!" }
         }
 
         if (!OSUtils.isSamsung()) {
-            hooks += findMethod(
+            hooks += Reflect.findMethod(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     COMPUTER_ENGINE_CLASS
                 } else {
@@ -113,8 +112,8 @@ class ActivityHook(private val service: HMAService) : IFrameworkHook {
                 },
                 findSuper = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU,
             ) {
-                name == "applyPostResolutionFilter"
-            }.hookBefore { param ->
+                it.name == "applyPostResolutionFilter"
+            }.hookBefore("activity:applyPostResolutionFilter") { param ->
                 @Suppress("UNCHECKED_CAST") // I know what I do
                 val list = param.args.first() as List<ResolveInfo>?
                 if (list.isNullOrEmpty()) return@hookBefore
@@ -125,16 +124,16 @@ class ActivityHook(private val service: HMAService) : IFrameworkHook {
                 val callingApps = Utils4Xposed.getCallingApps(service, callingUid)
                 val caller = callingApps.firstOrNull { service.isHookEnabled(it) }
                 if (caller != null) {
-                    logV(TAG) { "@${param.method.name}: $caller requested a resolve info" }
+                    logV(TAG) { "@${param.methodName}: $caller requested a resolve info" }
 
                     val filteredList = list.filter { resolveInfo ->
                         val targetApp = Utils.getPackageNameFromResolveInfo(resolveInfo)
 
-                        logV(TAG) { "@${param.method.name}: Checking $targetApp for $caller" }
+                        logV(TAG) { "@${param.methodName}: Checking $targetApp for $caller" }
 
                         (!service.shouldHideActivityLaunch(caller, targetApp)).apply {
                             if (!this) {
-                                logD(TAG) { "@${param.method.name}: Filtered $targetApp from $caller" }
+                                logD(TAG) { "@${param.methodName}: Filtered $targetApp from $caller" }
                             }
                         }
                     }
@@ -150,7 +149,6 @@ class ActivityHook(private val service: HMAService) : IFrameworkHook {
     }
 
     override fun unload() {
-        hooks.forEach(XC_MethodHook.Unhook::unhook)
-        hooks.clear()
+        hooks.unhookAll()
     }
 }

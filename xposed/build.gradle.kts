@@ -1,12 +1,13 @@
+import com.android.build.api.dsl.LibraryExtension
+
 plugins {
     alias(libs.plugins.agp.lib)
     alias(libs.plugins.refine)
-    alias(libs.plugins.kotlin)
 }
 
-val appPackageName: String by rootProject.extra
+val appPackageName: String = rootProject.extra["appPackageName"] as String
 
-android {
+configure<LibraryExtension> {
     namespace = "$appPackageName.xposed"
 
     buildFeatures {
@@ -22,8 +23,10 @@ dependencies {
     implementation(projects.common)
 
     implementation(libs.androidx.annotation.jvm)
-    implementation(libs.com.github.kyuubiran.ezxhelper)
     implementation(libs.dev.rikka.hidden.compat)
-    compileOnly(libs.de.robv.android.xposed.api)
     compileOnly(libs.dev.rikka.hidden.stub)
+
+    // The Modern Xposed API is injected into the target process by the framework,
+    // therefore it must never be packaged into the APK.
+    compileOnly(libs.io.github.libxposed.api)
 }

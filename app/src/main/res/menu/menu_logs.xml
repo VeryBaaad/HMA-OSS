@@ -45,4 +45,7 @@
         android:id="@+id/menu_reverse_order"
         android:checkable="true"
         android:title="@string/list_reverse_order" />
+    <item
+        android:id="@+id/menu_hot_reload"
+        android:title="@string/home_xposed_hot_reload" />
 </menu>

@@ -1,11 +1,12 @@
 package icu.nullptr.hidemyapplist.xposed.hook
 
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
 import icu.nullptr.hidemyapplist.xposed.Utils4Xposed.getCallingApps
 import icu.nullptr.hidemyapplist.xposed.Utils4Xposed.getPackageNameFromPackageSettings
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.methodName
 
 class PmsHookTarget29(service: HMAService) : PmsHookTargetBase(service) {
 
@@ -19,11 +20,11 @@ class PmsHookTarget29(service: HMAService) : PmsHookTargetBase(service) {
     override fun load() {
         logI(TAG) { "Load hook" }
 
-        hooks += findMethod(service.pms::class.java, findSuper = true) {
-            name == "filterAppAccessLPr" && parameterCount == 5
-        }.hookBefore { param ->
+        hooks += Reflect.findMethod(service.pms::class.java, findSuper = true) {
+            it.name == "filterAppAccessLPr" && it.parameterCount == 5
+        }.hookBefore("pms:filterAppAccessLPr") { param ->
             applyPackageHiding(
-                param.method.name,
+                param.methodName,
                 { param.args[1] as Int? },
                 { getPackageNameFromPackageSettings(param.args[0]) },
                 { getCallingApps(service, it) },

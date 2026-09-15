@@ -139,7 +139,7 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             backgroundTintList = tint
             clipToOutline = true
 
-            addLibraryItem(this, "EzXHelper", "Apache Software License 2.0", "https://github.com/KyuubiRan/EzXHelper")
+            addLibraryItem(this, "Modern Xposed API (libxposed)", "Apache Software License 2.0", "https://github.com/libxposed/api")
             addLibraryItem(this, "Glide", "Simplified BSD License", "https://github.com/bumptech/glide")
         }
     }

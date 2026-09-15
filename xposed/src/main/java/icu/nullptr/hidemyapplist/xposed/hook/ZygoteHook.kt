@@ -1,25 +1,26 @@
 package icu.nullptr.hidemyapplist.xposed.hook
 
-import com.github.kyuubiran.ezxhelper.utils.findMethodOrNull
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Logcat.logV
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.ZYGOTE_PROCESS_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 
 class ZygoteHook(private val service: HMAService): IFrameworkHook {
     companion object {
         private const val TAG = "ZygoteHook"
     }
 
-    private val hooks = mutableListOf<XC_MethodHook.Unhook>()
+    private val hooks = mutableListOf<HookHandle>()
 
     override fun load() {
-        findMethodOrNull(ZYGOTE_PROCESS_CLASS) {
-            name == "start"
-        }?.hookBefore { param ->
+        Reflect.findMethodOrNull(ZYGOTE_PROCESS_CLASS) {
+            it.name == "start"
+        }?.hookBefore("zygote:start") { param ->
             logV(TAG) { "@startZygoteProcess: Starting ${param.args.contentToString()}" }
 
             // ignore if the GIDs array is null
@@ -45,7 +46,6 @@ class ZygoteHook(private val service: HMAService): IFrameworkHook {
     }
 
     override fun unload() {
-        hooks.forEach(XC_MethodHook.Unhook::unhook)
-        hooks.clear()
+        hooks.unhookAll()
     }
 }

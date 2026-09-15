@@ -45,6 +45,14 @@
                 android:layout_height="wrap_content" />
 
             <TextView
+                android:id="@+id/framework_info"
+                android:layout_marginTop="4dp"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                android:textColor="?android:colorBackground"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
                 android:id="@+id/filter_count"
                 android:layout_marginTop="4dp"
                 android:textAppearance="@style/TextAppearance.Material3.BodyMedium"

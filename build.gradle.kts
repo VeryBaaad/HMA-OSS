@@ -1,9 +1,13 @@
+import com.android.build.api.dsl.ApkSigningConfig
 import com.android.build.api.dsl.ApplicationExtension
-import com.android.build.gradle.BaseExtension
+import com.android.build.api.dsl.CommonExtension
+import com.android.build.api.dsl.LibraryExtension
+import org.gradle.api.NamedDomainObjectContainer
 import org.jetbrains.kotlin.konan.properties.Properties
 
 plugins {
-    alias(libs.plugins.kotlin) apply false
+    // Kotlin support is built into AGP 9, applying org.jetbrains.kotlin.android here is
+    // an error since AGP 9.0.
     alias(libs.plugins.agp.app) apply false
     alias(libs.plugins.agp.lib) apply false
     alias(libs.plugins.nav.safeargs.kotlin) apply false
@@ -20,13 +24,8 @@ fun String.execute(currentWorkingDir: File = file("./")): String {
 val localProperties = Properties()
 localProperties.load(file("local.properties").inputStream())
 val ciBuild = providers.environmentVariable("CI").isPresent
-val officialBuild by extra(localProperties.getProperty("officialBuild", "false") == "true")
-
-@Suppress("unused")
-val crowdinProjectId: String by extra(localProperties.getProperty("crowdinProjectId", ""))
-
-@Suppress("unused")
-val crowdinApiKey: String by extra(localProperties.getProperty("crowdinApiKey", ""))
+val officialBuild = localProperties.getProperty("officialBuild", "false") == "true"
+val localBuild = localProperties.getProperty("localBuild", "false") == "true"
 
 fun getUncommittedSuffix(): String {
     if (officialBuild) return ""
@@ -59,11 +58,20 @@ val gitCommitCount = "git rev-list refs/remotes/origin/master --count".execute()
 // 432 is the count of commits before license changed
 val gitCommitCountAfterOss = gitCommitCount - 432
 
-val minSdkVer by extra(29)
-val targetSdkVer by extra(36)
+val minSdkVer = 29
+val targetSdkVer = 36
 
-val appVerCode by extra(gitCommitCount + 0x6f7373) // commit count + 0xOSS
-val appVerName by extra("oss-${gitCommitCountAfterOss}${gitHasUncommittedSuffix}")
+/*
+ * The Modern Xposed artifacts (io.github.libxposed:api / :service, 102.0.0) declare
+ * minCompileSdk 37 in their AAR metadata, therefore the project has to compile against
+ * android-37 even though it still targets android-36. The minor API level (37.1) is
+ * requested through the `compileSdk { }` block in configureBaseExtension().
+ */
+val compileSdkVer = 37
+val compileSdkMinorVer = 1
+
+val appVerCode = gitCommitCount + 0x6f7373 // commit count + 0xOSS
+val appVerName = "oss-${gitCommitCountAfterOss}${gitHasUncommittedSuffix}"
 
 /*
  * configVerCode, serviceVerCode and minBackupVerCode is used by other build.gradle.kts files
@@ -71,20 +79,35 @@ val appVerName by extra("oss-${gitCommitCountAfterOss}${gitHasUncommittedSuffix}
  * DO NOT REMOVE THESE LINES
 */
 
-@Suppress("unused")
-val configVerCode by extra(93)
+val configVerCode = 93
+val serviceVerCode = 102
+val minBackupVerCode = 65
+val appPackageName = "org.frknkrc44.hma_oss"
 
-@Suppress("unused")
-val serviceVerCode by extra(102)
+val crowdinProjectId = localProperties.getProperty("crowdinProjectId", "")
+val crowdinApiKey = localProperties.getProperty("crowdinApiKey", "")
 
-@Suppress("unused")
-val minBackupVerCode by extra(65)
-
-@Suppress("unused")
-val appPackageName by extra("org.frknkrc44.hma_oss")
-
-@Suppress("unused")
-val localBuild by extra(localProperties.getProperty("localBuild", "false") == "true")
+/*
+ * Shared build configuration, published through `extra` so that the subprojects can read
+ * it with `rootProject.extra["name"]`. The `val name by extra(value)` delegate syntax is
+ * deprecated since Gradle 9 and will be removed in Gradle 10.
+ */
+mapOf<String, Any>(
+    "minSdkVer" to minSdkVer,
+    "targetSdkVer" to targetSdkVer,
+    "compileSdkVer" to compileSdkVer,
+    "compileSdkMinorVer" to compileSdkMinorVer,
+    "appVerCode" to appVerCode,
+    "appVerName" to appVerName,
+    "configVerCode" to configVerCode,
+    "serviceVerCode" to serviceVerCode,
+    "minBackupVerCode" to minBackupVerCode,
+    "appPackageName" to appPackageName,
+    "localBuild" to localBuild,
+    "officialBuild" to officialBuild,
+    "crowdinProjectId" to crowdinProjectId,
+    "crowdinApiKey" to crowdinApiKey,
+).forEach { (name, value) -> extra.set(name, value) }
 
 val androidSourceCompatibility = JavaVersion.VERSION_21
 val androidTargetCompatibility = JavaVersion.VERSION_21
@@ -94,47 +117,60 @@ tasks.register("clean", Delete::class) {
 }
 
 fun Project.configureBaseExtension() {
-    extensions.findByType<BaseExtension>()?.run {
-        compileSdkVersion(targetSdkVer)
+    val minSdkVer: Int = rootProject.extra["minSdkVer"] as Int
+    val targetSdkVer: Int = rootProject.extra["targetSdkVer"] as Int
+    val compileSdkVer: Int = rootProject.extra["compileSdkVer"] as Int
+    val compileSdkMinorVer: Int = rootProject.extra["compileSdkMinorVer"] as Int
+    val appVerCode: Int = rootProject.extra["appVerCode"] as Int
+    val appVerName: String = rootProject.extra["appVerName"] as String
+
+    // `compileSdkVersion(Int)` is the legacy accessor. Only the modern `compileSdk { }`
+    // block can request a minor API level, which is what android-37.1 needs.
+    extensions.findByType(CommonExtension::class.java)?.apply {
+        compileSdk {
+            version = release(compileSdkVer) {
+                minorApiLevel = compileSdkMinorVer
+            }
+        }
+    }
+
+    // The signing configuration is shared by the application and the library branch.
+    var releaseSigningConfig: ApkSigningConfig? = null
+
+    val createSigningConfig: NamedDomainObjectContainer<out ApkSigningConfig>.() -> Unit = {
+        releaseSigningConfig = localProperties.getProperty("fileDir")?.let { keyStore ->
+            create("config") {
+                storeFile = file(keyStore)
+                storePassword = localProperties.getProperty("storePassword")
+                keyAlias = localProperties.getProperty("keyAlias")
+                keyPassword = localProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    extensions.findByType<ApplicationExtension>()?.run {
+        compileOptions {
+            sourceCompatibility = androidSourceCompatibility
+            targetCompatibility = androidTargetCompatibility
+        }
 
         defaultConfig {
             minSdk = minSdkVer
             targetSdk = targetSdkVer
             versionCode = appVerCode
             versionName = appVerName
-
-            consumerProguardFiles("proguard-rules.pro")
         }
 
-        val config = localProperties.getProperty("fileDir")?.let {
-            signingConfigs.create("config") {
-                storeFile = file(it)
-                storePassword = localProperties.getProperty("storePassword")
-                keyAlias = localProperties.getProperty("keyAlias")
-                keyPassword = localProperties.getProperty("keyPassword")
-            }
-        }
+        signingConfigs(createSigningConfig)
 
         buildTypes {
             all {
-                signingConfig = config ?: signingConfigs["debug"]
+                signingConfig = releaseSigningConfig ?: signingConfigs["debug"]
             }
             named("release") {
                 isMinifyEnabled = true
-                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            }
-        }
-
-        compileOptions {
-            sourceCompatibility = androidSourceCompatibility
-            targetCompatibility = androidTargetCompatibility
-        }
-    }
-
-    extensions.findByType<ApplicationExtension>()?.run {
-        buildTypes {
-            named("release") {
                 isShrinkResources = true
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             }
         }
 
@@ -143,6 +179,30 @@ fun Project.configureBaseExtension() {
             includeInApk = false
             // Disables dependency metadata when building Android App Bundles (for Google Play)
             includeInBundle = false
+        }
+    }
+
+    extensions.findByType<LibraryExtension>()?.run {
+        compileOptions {
+            sourceCompatibility = androidSourceCompatibility
+            targetCompatibility = androidTargetCompatibility
+        }
+
+        defaultConfig {
+            minSdk = minSdkVer
+            consumerProguardFiles("proguard-rules.pro")
+        }
+
+        signingConfigs(createSigningConfig)
+
+        buildTypes {
+            all {
+                signingConfig = releaseSigningConfig ?: signingConfigs["debug"]
+            }
+            named("release") {
+                isMinifyEnabled = true
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            }
         }
     }
 }

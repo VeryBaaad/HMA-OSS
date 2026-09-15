@@ -2,15 +2,16 @@ package icu.nullptr.hidemyapplist.xposed.hook
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ParceledListSlice
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
 import icu.nullptr.hidemyapplist.common.settings_presets.AccessibilityPreset
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
 import icu.nullptr.hidemyapplist.xposed.Utils4Xposed
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.ACCESSIBILITY_SERVICE_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 import java.lang.reflect.Method
 
 // Big credits: https://github.com/Nitsuya/DoNotTryAccessibility/blob/main/app/src/main/java/io/github/nitsuya/donottryaccessibility/hook/AndroidFrameworkHooker.kt
@@ -19,14 +20,14 @@ class AccessibilityHook(private val service: HMAService) : IFrameworkHook {
         private const val TAG = "AccessibilityHook"
     }
 
-    private val hookList = mutableSetOf<XC_MethodHook.Unhook>()
+    private val hookList = mutableListOf<HookHandle>()
 
     override fun load() {
         logI(TAG) { "Load hook" }
 
-        hookList += findMethod(ACCESSIBILITY_SERVICE_CLASS) {
-            name == "getEnabledAccessibilityServiceList"
-        }.hookBefore { param ->
+        hookList += Reflect.findMethod(ACCESSIBILITY_SERVICE_CLASS) {
+            it.name == "getEnabledAccessibilityServiceList"
+        }.hookBefore("accessibility:getEnabledAccessibilityServiceList") { param ->
             val callingApps = Utils4Xposed.getCallingApps(service)
             if (callingApps.isEmpty()) return@hookBefore
 
@@ -34,7 +35,7 @@ class AccessibilityHook(private val service: HMAService) : IFrameworkHook {
             if (caller != null) {
                 val returnedList = java.util.ArrayList<AccessibilityServiceInfo>()
 
-                logD(TAG) { "@${param.method.name} returned empty list for ${callingApps.contentToString()}" }
+                logD(TAG) { "@${param.methodName} returned empty list for ${callingApps.contentToString()}" }
 
                 val returnType = (param.method as Method).returnType
                 param.result = if ("Parcel" in returnType.javaClass.simpleName) {
@@ -45,9 +46,9 @@ class AccessibilityHook(private val service: HMAService) : IFrameworkHook {
             }
         }
 
-        hookList += findMethod(ACCESSIBILITY_SERVICE_CLASS) {
-            name == "addClient"
-        }.hookBefore { param ->
+        hookList += Reflect.findMethod(ACCESSIBILITY_SERVICE_CLASS) {
+            it.name == "addClient"
+        }.hookBefore("accessibility:addClient") { param ->
             val callingApps = Utils4Xposed.getCallingApps(service)
             if (callingApps.isEmpty()) return@hookBefore
 
@@ -62,7 +63,6 @@ class AccessibilityHook(private val service: HMAService) : IFrameworkHook {
         service.getEnabledSettingsPresets(caller).contains(AccessibilityPreset.NAME)
 
     override fun unload() {
-        hookList.forEach(XC_MethodHook.Unhook::unhook)
-        hookList.clear()
+        hookList.unhookAll()
     }
 }

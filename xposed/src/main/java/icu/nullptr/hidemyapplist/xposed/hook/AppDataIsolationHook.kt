@@ -3,17 +3,17 @@ package icu.nullptr.hidemyapplist.xposed.hook
 import android.os.Build
 import android.os.SystemProperties
 import androidx.annotation.RequiresApi
-import com.github.kyuubiran.ezxhelper.utils.findMethodOrNull
-import com.github.kyuubiran.ezxhelper.utils.hookAfter
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedHelpers
 import icu.nullptr.hidemyapplist.common.Utils
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Logcat.logE
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.STORAGE_MANAGER_SERVICE_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookAfter
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 import org.frknkrc44.hma_oss.common.BuildConfig
 
 @RequiresApi(Build.VERSION_CODES.R)
@@ -24,28 +24,27 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
         private const val APPDATA_ISOLATION_ENABLED = "mAppDataIsolationEnabled"
         private const val VOLD_APPDATA_ISOLATION_ENABLED = "mVoldAppDataIsolationEnabled"
         private const val FUSE_PROP = "persist.sys.fuse"
+        private const val PROCESS_LIST_CLASS = "com.android.server.am.ProcessList"
     }
 
-    private val hooks = mutableListOf<XC_MethodHook.Unhook>()
+    private val hooks = mutableListOf<HookHandle>()
     private var voldHookSkipped = false
 
     override fun load() {
         if (!(service.config.altAppDataIsolation || service.config.altVoldAppDataIsolation)) return
         logI(TAG) { "Load hook" }
 
-        findMethodOrNull(
-            "com.android.server.am.ProcessList"
-        ) {
-            name == "startProcess"
-        }?.hookBefore { param ->
+        Reflect.findMethodOrNull(PROCESS_LIST_CLASS) {
+            it.name == "startProcess"
+        }?.hookBefore("appDataIsolation:startProcess") { param ->
             if (service.config.altAppDataIsolation) {
-                val isEnabled = XposedHelpers.getBooleanField(
+                val isEnabled = Reflect.getBooleanField(
                     param.thisObject,
                     APPDATA_ISOLATION_ENABLED
                 )
 
                 if (!isEnabled) {
-                    XposedHelpers.setBooleanField(
+                    Reflect.setBooleanField(
                         param.thisObject,
                         APPDATA_ISOLATION_ENABLED,
                         true
@@ -62,13 +61,13 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
                     voldHookSkipped = true
                     logE(TAG) { "ProcessList - FUSE storage is not enabled, skip vold hook" }
                 } else {
-                    val isolationEnabled = XposedHelpers.getBooleanField(
+                    val isolationEnabled = Reflect.getBooleanField(
                         param.thisObject,
                         VOLD_APPDATA_ISOLATION_ENABLED
                     )
 
                     if (!isolationEnabled) {
-                        XposedHelpers.setBooleanField(
+                        Reflect.setBooleanField(
                             param.thisObject,
                             VOLD_APPDATA_ISOLATION_ENABLED,
                             true
@@ -82,25 +81,23 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
             hooks += it
         }
 
-        findMethodOrNull(
-            "com.android.server.am.ProcessList"
-        ) {
-            name == "needsStorageDataIsolation"
-        }?.hookAfter { param ->
+        Reflect.findMethodOrNull(PROCESS_LIST_CLASS) {
+            it.name == "needsStorageDataIsolation"
+        }?.hookAfter("appDataIsolation:needsStorageDataIsolation") { param ->
             if (service.config.altVoldAppDataIsolation) {
-                val app = param.args.find { it.javaClass.simpleName == "ProcessRecord" }
-                val uid = XposedHelpers.getIntField(app, "uid")
+                val app = param.args.find { it?.javaClass?.simpleName == "ProcessRecord" }
+                val uid = Reflect.getIntField(app, "uid")
                 val processName = runCatching {
-                    XposedHelpers.getObjectField(app, "processName")
+                    Reflect.getObjectField(app, "processName")
                 }.getOrDefault("<unknown>")
                 val mountNode = runCatching {
-                    XposedHelpers.getIntField(app, "mMountMode")
+                    Reflect.getIntField(app, "mMountMode")
                 }.getOrDefault(0)
                 val isolated = runCatching {
-                    XposedHelpers.getBooleanField(app, "isolated")
+                    Reflect.getBooleanField(app, "isolated")
                 }.getOrDefault(false)
                 val appZygote = runCatching {
-                    XposedHelpers.getBooleanField(app, "appZygote")
+                    Reflect.getBooleanField(app, "appZygote")
                 }.getOrDefault(false)
 
                 val apps = Utils.binderLocalScope {
@@ -137,9 +134,9 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
             hooks += it
         }
 
-        findMethodOrNull(STORAGE_MANAGER_SERVICE_CLASS) {
-            name == "onVolumeStateChangedLocked"
-        }?.hookBefore { param ->
+        Reflect.findMethodOrNull(STORAGE_MANAGER_SERVICE_CLASS) {
+            it.name == "onVolumeStateChangedLocked"
+        }?.hookBefore("appDataIsolation:onVolumeStateChangedLocked") { param ->
             runCatching {
                 if (service.config.altVoldAppDataIsolation) {
                     val fuseEnabled = SystemProperties.getBoolean(FUSE_PROP, false)
@@ -150,13 +147,13 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
                         return@hookBefore
                     }
 
-                    val isolationEnabled = XposedHelpers.getBooleanField(
+                    val isolationEnabled = Reflect.getBooleanField(
                         param.thisObject,
                         VOLD_APPDATA_ISOLATION_ENABLED
                     )
 
                     if (!isolationEnabled) {
-                        XposedHelpers.setBooleanField(
+                        Reflect.setBooleanField(
                             param.thisObject,
                             VOLD_APPDATA_ISOLATION_ENABLED,
                             true
@@ -173,9 +170,9 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
             hooks += it
         }
 
-        findMethodOrNull(STORAGE_MANAGER_SERVICE_CLASS) {
-            name == "remountAppStorageDirs"
-        }?.hookBefore { param ->
+        Reflect.findMethodOrNull(STORAGE_MANAGER_SERVICE_CLASS) {
+            it.name == "remountAppStorageDirs"
+        }?.hookBefore("appDataIsolation:remountAppStorageDirs") { param ->
             if (service.config.altVoldAppDataIsolation && service.config.skipSystemAppDataIsolation) {
                 @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
                 val pidPkgMap = param.args[0] as java.util.Map<*, *>
@@ -211,7 +208,6 @@ class AppDataIsolationHook(private val service: HMAService): IFrameworkHook {
     }
 
     override fun unload() {
-        hooks.forEach(XC_MethodHook.Unhook::unhook)
-        hooks.clear()
+        hooks.unhookAll()
     }
 }

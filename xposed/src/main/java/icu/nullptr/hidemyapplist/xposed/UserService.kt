@@ -6,12 +6,12 @@ import android.content.pm.IPackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.ServiceManager
-import de.robv.android.xposed.XposedHelpers
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.common.Utils
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Logcat.logE
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
 import org.frknkrc44.hma_oss.common.BuildConfig
 import rikka.hidden.compat.ActivityManagerApis
 import rikka.hidden.compat.adapter.UidObserverAdapter
@@ -22,9 +22,18 @@ object UserService {
 
     private var appUid = 0
 
+    @Volatile
+    private var observerRegistered = false
+
+    /** The running [HMAService], also used by the hot reload hand-over. */
+    @Volatile
+    var service: HMAService? = null
+        private set
+
     private val uidObserver = object : UidObserverAdapter() {
         override fun onUidActive(uid: Int) {
-            if (HMAService.instance == null) {
+            val instance = HMAService.instance
+            if (instance == null) {
                 logE(TAG) { "HMAService instance is not available, maybe stopped" }
                 return
             }
@@ -36,7 +45,7 @@ object UserService {
                     "Failed to get provider"
                 }
                 val extras = Bundle()
-                extras.putBinder("binder", HMAService.instance)
+                extras.putBinder("binder", instance)
                 val reply = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val attr = AttributionSource.Builder(1000).setPackageName("android").build()
                     provider?.call(attr, Constants.PROVIDER_AUTHORITY, "", null, extras)
@@ -58,10 +67,11 @@ object UserService {
 
     fun register(pms: IPackageManager, pmn: Any?) {
         logI(TAG) { "Initialize HMAService - Version ${BuildConfig.APP_VERSION_NAME}" }
-        val service = HMAService(pms, pmn)
+        val created = HMAService(pms, pmn)
+        service = created
 
         try {
-            appUid = Utils.getPackageUidCompat(service.pms, BuildConfig.APP_PACKAGE_NAME, 0, 0)
+            appUid = Utils.getPackageUidCompat(created.pms, BuildConfig.APP_PACKAGE_NAME, 0, 0)
             assert(appUid >= 0) {
                 "App UID cannot be -1 or lower"
             }
@@ -79,8 +89,29 @@ object UserService {
             ActivityManagerHidden.PROCESS_STATE_TOP,
             null
         )
+        observerRegistered = true
 
         logI(TAG) { "Registered observer" }
+    }
+
+    /**
+     * Releases everything owned by the module so that the framework can retire this
+     * generation during a hot reload.
+     */
+    fun shutdown() {
+        if (observerRegistered) {
+            runCatching {
+                ActivityManagerApis.unregisterUidObserver(uidObserver)
+            }.onFailure {
+                logE(TAG, it) { "Failed to unregister the UID observer" }
+            }
+        }
+        observerRegistered = false
+
+        HMAService.instance?.shutdown()
+        service = null
+        appUid = 0
+        logI(TAG) { "User service stopped" }
     }
 
     private fun waitActivityService() {
@@ -88,7 +119,7 @@ object UserService {
         // but use the getService fallback if fails to run
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                XposedHelpers.callStaticMethod(
+                Reflect.callStaticMethod(
                     ServiceManager::class.java,
                     "waitForService",
                     "activity"

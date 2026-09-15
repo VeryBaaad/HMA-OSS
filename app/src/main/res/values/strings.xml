@@ -38,12 +38,19 @@
     <string name="follow_system">Follow system</string>
 
     <!-- Home -->
+    <string name="xposed_description">Hide your app list, settings, package installers and more.</string>
     <string name="home_xposed_activated">Module Activated [%s]</string>
     <string name="home_xposed_not_activated">Module Not Activated</string>
     <string name="home_xposed_service_on">System service running [%d]</string>
     <string name="home_xposed_service_off">System service not running</string>
     <string name="home_xposed_service_old">Module updated, need reboot</string>
     <string name="home_xposed_filter_count">HMA-OSS has filtered total %d requests</string>
+    <string name="home_xposed_framework">Framework: %1$s %2$s (API %3$d)</string>
+    <string name="home_xposed_hot_reload">Hot reload module</string>
+    <string name="home_xposed_hot_reload_unsupported">Hot reload needs an API 102 Xposed framework (current: API %d)</string>
+    <string name="home_xposed_hot_reload_none">No running process is hooked by HMA-OSS</string>
+    <string name="home_xposed_hot_reload_started">Hot reload requested for %d process(es)</string>
+    <string name="home_xposed_hot_reload_result">%1$s: %2$s</string>
     <string name="home_manage">Manage</string>
     <string name="home_detection_test">Detection test</string>
     <string name="home_download_test_app_title">Download test app</string>

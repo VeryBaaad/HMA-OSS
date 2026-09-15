@@ -2,7 +2,7 @@ package icu.nullptr.hidemyapplist.xposed
 
 import android.os.SystemProperties
 import android.util.Log
-import de.robv.android.xposed.XposedBridge
+import icu.nullptr.hidemyapplist.xposed.bridge.XposedEnvironment
 import org.frknkrc44.hma_oss.common.BuildConfig
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -27,14 +27,20 @@ object Logcat {
         if (level <= Log.DEBUG && HMAService.instance?.config?.detailLog == false) return
         if (level == Log.VERBOSE && !BuildConfig.DEBUG) return
 
-        val parsedMsg = parseLog(level, tag, msg(), cause)
+        val message = runCatching(msg).getOrElse { return }
+        val parsedMsg = parseLog(level, tag, message, cause)
 
         HMAService.instance?.apply {
-            executor.execute {
-                addLog(parsedMsg)
-                println(parsedMsg)
+            runCatching {
+                executor.execute {
+                    addLog(parsedMsg)
+                    writeToXposedLog(level, tag, message, cause)
+                }
+            }.onFailure {
+                // The executor is shut down while the module is being hot reloaded.
+                writeToXposedLog(level, tag, message, cause)
             }
-        } ?: println(parsedMsg)
+        } ?: writeToXposedLog(level, tag, message, cause)
     }
 
     private fun parseLog(level: Int, tag: String, msg: String, cause: Throwable? = null) = buildString {
@@ -53,14 +59,24 @@ object Logcat {
         if (!endsWith('\n')) append('\n')
     }
 
-
-    private fun println(msg: String) {
+    /**
+     * Writes to the Xposed framework log. Replaces `XposedBridge.log` of the legacy
+     * API, the Modern Xposed API exposes it through [io.github.libxposed.api.XposedInterface].
+     */
+    private fun writeToXposedLog(level: Int, tag: String, msg: String, cause: Throwable?) {
         if (logdReady == null) {
             logdReady = SystemProperties.get("init.svc.logd") == "running"
         }
 
         if (logdReady != true) return
+        if (!XposedEnvironment.isAttached) return
 
-        XposedBridge.log(msg)
+        runCatching {
+            if (cause != null) {
+                XposedEnvironment.module.log(level, tag, msg, cause)
+            } else {
+                XposedEnvironment.module.log(level, tag, msg)
+            }
+        }
     }
 }

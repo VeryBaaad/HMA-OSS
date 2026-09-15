@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import dev.androidbroadcast.vbpd.viewBinding
 import icu.nullptr.hidemyapplist.MyApp
 import icu.nullptr.hidemyapplist.common.OSUtils
+import icu.nullptr.hidemyapplist.service.FrameworkService
 import icu.nullptr.hidemyapplist.service.PrefManager
 import icu.nullptr.hidemyapplist.service.ServiceClient
 import icu.nullptr.hidemyapplist.ui.adapter.LogAdapter
@@ -138,6 +139,54 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
                 PrefManager.logFilter_reverseOrder = item.isChecked
                 updateLogs()
             }
+            R.id.menu_hot_reload -> hotReloadModule()
+        }
+    }
+
+    /**
+     * Asks the Xposed framework service to hot reload the module (Modern Xposed API 102).
+     *
+     * On an API 101 framework hot reload does not exist, so the request is refused with
+     * an explanation instead of silently doing nothing.
+     */
+    private fun hotReloadModule() {
+        FrameworkService.init()
+
+        val framework = FrameworkService.currentFramework
+        if (framework == null) {
+            showToast(R.string.home_xposed_service_off)
+            return
+        }
+
+        if (!framework.supportsHotReload) {
+            showToast(getString(R.string.home_xposed_hot_reload_unsupported, framework.apiVersion))
+            return
+        }
+
+        val targets = FrameworkService.runningTargets()
+        if (targets.isEmpty()) {
+            showToast(R.string.home_xposed_hot_reload_none)
+            return
+        }
+
+        val requested = FrameworkService.hotReloadStaleTargets { target, result ->
+            // The callback runs on a Binder thread, dispatch before touching the UI.
+            activity?.runOnUiThread {
+                showToast(
+                    getString(
+                        R.string.home_xposed_hot_reload_result,
+                        target.processName,
+                        result.status.name,
+                    )
+                )
+                updateLogs()
+            }
+        }
+
+        if (!requested) {
+            showToast(getString(R.string.home_xposed_hot_reload_unsupported, framework.apiVersion))
+        } else {
+            showToast(getString(R.string.home_xposed_hot_reload_started, targets.size))
         }
     }
 

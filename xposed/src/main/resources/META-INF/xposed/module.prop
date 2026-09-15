@@ -1,0 +1,17 @@
+# Modern Xposed (libxposed) module descriptor.
+# See https://libxposed.github.io/api/io/github/libxposed/api/package-summary.html
+#
+# minApiVersion  - the module still loads on API 101 frameworks, see XposedEntry for
+#                  the runtime feature gate.
+# targetApiVersion - HMA-OSS targets API 102 so that it can opt into the API 102
+#                  features (hot reload, hook identity).
+# staticScope    - the system scope is fixed, users must not extend it.
+# exceptionMode  - never let a hook error escape into system_server.
+# autoHotReload  - let the framework hot reload the module after an app update.
+#                  XposedEntry#onHotReloading still rejects the request when the
+#                  running framework reports an API version below 102.
+minApiVersion=101
+targetApiVersion=102
+staticScope=true
+exceptionMode=protective
+autoHotReload=true

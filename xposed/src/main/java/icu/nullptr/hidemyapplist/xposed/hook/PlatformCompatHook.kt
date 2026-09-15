@@ -3,15 +3,15 @@ package icu.nullptr.hidemyapplist.xposed.hook
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
 import icu.nullptr.hidemyapplist.common.PropertyUtils
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Logcat.logE
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.PLATFORM_COMPAT_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import io.github.libxposed.api.XposedInterface.HookHandle
 import org.frknkrc44.hma_oss.common.BuildConfig
 
 @RequiresApi(Build.VERSION_CODES.R)
@@ -25,15 +25,15 @@ class PlatformCompatHook(private val service: HMAService) : IFrameworkHook {
         PropertyUtils.isAppDataIsolationEnabled || service.config.altAppDataIsolation
     }
 
-    private var hook: XC_MethodHook.Unhook? = null
+    private var hook: HookHandle? = null
 
     override fun load() {
         if (!service.config.forceMountData) return
         logI(TAG) { "Load hook" }
         logI(TAG) { "App data isolation enabled: $sAppDataIsolationEnabled" }
-        hook = findMethod(PLATFORM_COMPAT_CLASS) {
-            name == "isChangeEnabled"
-        }.hookBefore { param ->
+        hook = Reflect.findMethod(PLATFORM_COMPAT_CLASS) {
+            it.name == "isChangeEnabled"
+        }.hookBefore("platformCompat:isChangeEnabled") { param ->
             runCatching {
                 if (!sAppDataIsolationEnabled) return@hookBefore
 

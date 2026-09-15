@@ -1,18 +1,19 @@
+import com.android.build.api.dsl.LibraryExtension
+
 plugins {
     alias(libs.plugins.agp.lib)
     alias(libs.plugins.refine)
-    alias(libs.plugins.kotlin)
     alias(libs.plugins.kotlin.serialization)
 }
 
-val configVerCode: Int by rootProject.extra
-val serviceVerCode: Int by rootProject.extra
-val minBackupVerCode: Int by rootProject.extra
-val appPackageName: String by rootProject.extra
-val appVerName: String by rootProject.extra
-val appVerCode: Int by rootProject.extra
+val configVerCode: Int = rootProject.extra["configVerCode"] as Int
+val serviceVerCode: Int = rootProject.extra["serviceVerCode"] as Int
+val minBackupVerCode: Int = rootProject.extra["minBackupVerCode"] as Int
+val appPackageName: String = rootProject.extra["appPackageName"] as String
+val appVerName: String = rootProject.extra["appVerName"] as String
+val appVerCode: Int = rootProject.extra["appVerCode"] as Int
 
-android {
+configure<LibraryExtension> {
     namespace = "$appPackageName.common"
 
     buildFeatures {

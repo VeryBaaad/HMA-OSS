@@ -7,14 +7,16 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.hookAfter
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.Logcat.logD
 import icu.nullptr.hidemyapplist.xposed.Utils4Xposed
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.CONTENT_PROVIDER_TRANSPORT_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.HookParam
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookAfter
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import icu.nullptr.hidemyapplist.xposed.bridge.unhookAll
+import io.github.libxposed.api.XposedInterface.HookHandle
 
 class ContentProviderHook(private val service: HMAService): IFrameworkHook {
     companion object {
@@ -22,13 +24,13 @@ class ContentProviderHook(private val service: HMAService): IFrameworkHook {
         private val NV_PAIR = arrayOf("name", "value")
     }
 
-    private val hooks = mutableListOf<XC_MethodHook.Unhook>()
+    private val hooks = mutableListOf<HookHandle>()
 
     @Suppress("UNCHECKED_CAST")
     override fun load() {
-        hooks += findMethod(CONTENT_PROVIDER_TRANSPORT_CLASS) {
-            name == "query"
-        }.hookAfter { param ->
+        hooks += Reflect.findMethod(CONTENT_PROVIDER_TRANSPORT_CLASS) {
+            it.name == "query"
+        }.hookAfter("contentProvider:query") { param ->
             val callingApps = getCallingPackages(param)
 
             val caller = callingApps.firstOrNull { service.isHookEnabled(it) }
@@ -124,9 +126,9 @@ class ContentProviderHook(private val service: HMAService): IFrameworkHook {
         }
 
         // Credit: https://github.com/Nitsuya/DoNotTryAccessibility/blob/main/app/src/main/java/io/github/nitsuya/donottryaccessibility/hook/AndroidFrameworkHooker.kt
-        hooks += findMethod(CONTENT_PROVIDER_TRANSPORT_CLASS) {
-            name == "call"
-        }.hookBefore { param ->
+        hooks += Reflect.findMethod(CONTENT_PROVIDER_TRANSPORT_CLASS) {
+            it.name == "call"
+        }.hookBefore("contentProvider:call") { param ->
             val callingApps = getCallingPackages(param)
             val caller = callingApps.firstOrNull { service.isHookEnabled(it) }
             if (caller == null) return@hookBefore
@@ -154,7 +156,7 @@ class ContentProviderHook(private val service: HMAService): IFrameworkHook {
         }
     }
 
-    private fun getCallingPackages(param: XC_MethodHook.MethodHookParam) = try {
+    private fun getCallingPackages(param: HookParam) = try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val attrSource = param.args.first() as AttributionSource
             arrayOf(attrSource.packageName)
@@ -166,7 +168,6 @@ class ContentProviderHook(private val service: HMAService): IFrameworkHook {
     }
 
     override fun unload() {
-        hooks.forEach(XC_MethodHook.Unhook::unhook)
-        hooks.clear()
+        hooks.unhookAll()
     }
 }

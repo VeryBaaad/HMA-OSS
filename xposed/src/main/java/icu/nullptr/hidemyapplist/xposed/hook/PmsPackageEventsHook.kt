@@ -3,21 +3,21 @@ package icu.nullptr.hidemyapplist.xposed.hook
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import com.github.kyuubiran.ezxhelper.utils.findMethod
-import com.github.kyuubiran.ezxhelper.utils.hookBefore
-import de.robv.android.xposed.XC_MethodHook
 import icu.nullptr.hidemyapplist.xposed.HMAService
 import icu.nullptr.hidemyapplist.xposed.XposedConstants.PACKAGE_MANAGER_SERVICE_CLASS
+import icu.nullptr.hidemyapplist.xposed.bridge.Reflect
+import icu.nullptr.hidemyapplist.xposed.bridge.hookBefore
+import io.github.libxposed.api.XposedInterface.HookHandle
 
 class PmsPackageEventsHook(private val service: HMAService) : IFrameworkHook {
-    private var hook: XC_MethodHook.Unhook? = null
+    private var hook: HookHandle? = null
 
     override fun load() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
-                hook = findMethod("com.android.server.pm.BroadcastHelper") {
-                    name == "sendPackageBroadcastAndNotify"
-                }.hookBefore { param ->
+                hook = Reflect.findMethod("com.android.server.pm.BroadcastHelper") {
+                    it.name == "sendPackageBroadcastAndNotify"
+                }.hookBefore("pms:sendPackageBroadcastAndNotify") { param ->
                     service.handlePackageEvent(
                         param.args[0] as String?,
                         param.args[1] as String?,
@@ -25,9 +25,9 @@ class PmsPackageEventsHook(private val service: HMAService) : IFrameworkHook {
                     )
                 }
             } catch (_: Throwable) {
-                hook = findMethod("com.android.internal.content.PackageMonitor") {
-                    name == "onReceive"
-                }.hookBefore { param ->
+                hook = Reflect.findMethod("com.android.internal.content.PackageMonitor") {
+                    it.name == "onReceive"
+                }.hookBefore("pms:packageMonitorOnReceive") { param ->
                     val intent = param.args[1] as? Intent ?: return@hookBefore
 
                     service.handlePackageEvent(
@@ -38,9 +38,9 @@ class PmsPackageEventsHook(private val service: HMAService) : IFrameworkHook {
                 }
             }
         } else {
-            hook = findMethod(PACKAGE_MANAGER_SERVICE_CLASS) {
-                name == "sendPackageBroadcast"
-            }.hookBefore { param ->
+            hook = Reflect.findMethod(PACKAGE_MANAGER_SERVICE_CLASS) {
+                it.name == "sendPackageBroadcast"
+            }.hookBefore("pms:sendPackageBroadcast") { param ->
                 service.handlePackageEvent(
                     param.args[0] as String?,
                     param.args[1] as String?,

@@ -11,8 +11,6 @@ import android.os.RemoteException
 import android.os.UserHandle
 import android.provider.Settings
 import android.util.Log
-import com.github.kyuubiran.ezxhelper.utils.isStatic
-import com.github.kyuubiran.ezxhelper.utils.removeIf
 import icu.nullptr.hidemyapplist.common.AppPresets
 import icu.nullptr.hidemyapplist.common.Constants
 import icu.nullptr.hidemyapplist.common.Constants.PARCEL_TYPE_CONFIG
@@ -34,6 +32,7 @@ import icu.nullptr.hidemyapplist.xposed.Logcat.logE
 import icu.nullptr.hidemyapplist.xposed.Logcat.logI
 import icu.nullptr.hidemyapplist.xposed.Logcat.logW
 import icu.nullptr.hidemyapplist.xposed.Logcat.logWithLevel
+import icu.nullptr.hidemyapplist.xposed.bridge.isStatic
 import icu.nullptr.hidemyapplist.xposed.hook.AccessibilityHook
 import icu.nullptr.hidemyapplist.xposed.hook.ActivityHook
 import icu.nullptr.hidemyapplist.xposed.hook.AppDataIsolationHook
@@ -81,6 +80,10 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
     val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val uidHideCache = mutableListOf<Triple<Int, String, MutableList<String>>>()
 
+    /** Long running preset reload, tracked so it can be stopped on hot reload. */
+    @Volatile
+    private var presetThread: Thread? = null
+
     var config = JsonConfig().apply { detailLog = true }
         private set
 
@@ -101,11 +104,14 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
             logWithLevel(level, "AppPresets") { msg }
         }
 
-        thread {
-            reloadPresetsFromScratch()
+        presetThread = thread(name = "hma-preset-loader") {
+            runCatching {
+                reloadPresetsFromScratch()
+            }.onFailure {
+                logW(TAG, it) { "Failed to reload presets" }
+            }
         }
     }
-
     private fun searchDataDir() {
         File("/data/system").list()?.forEach {
             if (it.startsWith("hide_my_applist")) {
@@ -201,10 +207,10 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
 
     private fun cleanRemnants(config: JsonConfig) {
         for (app in config.scope.values) {
-            app.applyTemplates.removeIf { !config.templates.containsKey(it) }
-            app.applyPresets.removeIf { !AppPresets.instance.presetNames.contains(it) }
-            app.applySettingTemplates.removeIf { !config.settingsTemplates.containsKey(it) }
-            app.applySettingsPresets.removeIf { !SettingsPresets.instance.presetNames.contains(it) }
+            app.applyTemplates.removeAll { !config.templates.containsKey(it) }
+            app.applyPresets.removeAll { !AppPresets.instance.presetNames.contains(it) }
+            app.applySettingTemplates.removeAll { !config.settingsTemplates.containsKey(it) }
+            app.applySettingsPresets.removeAll { !SettingsPresets.instance.presetNames.contains(it) }
         }
     }
 
@@ -460,6 +466,38 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
         instance = null
     }
 
+    /**
+     * Releases every resource owned by this service instance.
+     *
+     * Used by the API 102 hot reload hand-shake: the framework requires the old module
+     * generation to stop all of its threads and drop the references it stored into
+     * system classes before the generation can be retired.
+     */
+    fun shutdown() {
+        synchronized(loggerLock) {
+            logcatAvailable = false
+        }
+        synchronized(configLock) {
+            frameworkHooks.forEach(IFrameworkHook::unload)
+            frameworkHooks.clear()
+            uidHideCache.clear()
+        }
+
+        runCatching { executor.shutdownNow() }
+
+        presetThread?.let {
+            it.interrupt()
+            runCatching { it.join(1_000) }
+        }
+        presetThread = null
+
+        if (instance === this) {
+            instance = null
+        }
+
+        logI(TAG) { "Service shut down" }
+    }
+
     fun addLog(parsedMsg: String) {
         synchronized(loggerLock) {
             if (!logcatAvailable) return
@@ -483,7 +521,7 @@ class HMAService(val pms: IPackageManager, val pmn: Any?) : IHMAService.Stub() {
                 uidHideCache.clear()
 
                 // remove filter counts for apps if they are not in config
-                filterHolder.filterCounts.removeIf { key, _ -> !config.scope.containsKey(key) }
+                filterHolder.filterCounts.keys.removeAll { !config.scope.containsKey(it) }
             }.onSuccess {
                 logD(TAG) { "Config synced" }
             }.onFailure {
